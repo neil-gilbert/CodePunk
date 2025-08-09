@@ -13,10 +13,11 @@ CodePunk.NET aims to become the ultimate AI coding companion by providing:
 - **Session Management**: Persistent conversation history with file tracking and version control
 - **Rich CLI Experience**: Beautiful terminal interface with interactive features
 
-## 🚀 Current Status - Phase 1 Complete ✅
+## 🚀 Current Status - Phase 2 Complete ✅
 
-The foundational architecture has been successfully implemented:
+Both foundational architecture and LLM integration are now successfully implemented:
 
+### Phase 1 Foundation ✅
 - ✅ **Clean Architecture**: Modular design with clear separation of concerns
 - ✅ **Domain Models**: Session, Message, and File management with rich semantics
 - ✅ **Data Layer**: Optimized Entity Framework Core with SQLite persistence
@@ -25,6 +26,15 @@ The foundational architecture has been successfully implemented:
 - ✅ **Dependency Injection**: Modern .NET hosting model with proper DI container
 - ✅ **Logging**: Structured logging with Serilog for debugging and monitoring
 - ✅ **Testing**: Comprehensive unit test coverage with xUnit and FluentAssertions
+
+### Phase 2 LLM Integration ✅
+- ✅ **LLM Provider Infrastructure**: Complete abstraction layer for AI providers
+- ✅ **OpenAI Integration**: Full GPT-4o, GPT-4o-mini, and GPT-3.5-turbo support
+- ✅ **Streaming Responses**: Real-time AI response streaming with `IAsyncEnumerable`
+- ✅ **Tool Execution Framework**: Extensible system for AI tool execution
+- ✅ **Basic Tools**: ReadFile, WriteFile, and Shell command tools
+- ✅ **Cost Tracking**: Token usage and cost calculation for OpenAI models
+- ✅ **HTTP Client Integration**: Modern HTTP client factory pattern
 
 ## 🏗️ Architecture Overview
 
@@ -42,12 +52,12 @@ CodePunk.NET is an open-source project and we welcome contributions! Here's how 
 7. Open a Pull Request
 
 ### Areas for Contribution
-- **LLM Provider Integration**: Add support for new AI providers
-- **Tool Development**: Create new tools for developer workflows
-- **UI/UX Improvements**: Enhance the console interface
-- **Testing**: Improve test coverage and add integration tests
-- **Documentation**: Help improve docs and examples
-- **Performance**: Optimize critical paths and reduce memory usage
+- **LLM Provider Integration**: Add support for Anthropic Claude, local models (Ollama), or other providers
+- **Tool Development**: Create new tools for developer workflows (Git integration, database queries, etc.)
+- **UI/UX Improvements**: Enhance the console interface with more interactive features
+- **Testing**: Improve test coverage and add integration tests for LLM services
+- **Documentation**: Help improve docs, examples, and usage guides
+- **Performance**: Optimize AI response times, memory usage, and database queries
 
 ## 📄 License
 
@@ -93,7 +103,41 @@ Built with love for the developer community using:
 
 You'll see the CodePunk.NET welcome screen with ASCII art and a demonstration of the session management system.
 
+### Configuration
+
+CodePunk.NET supports various configuration options through `appsettings.json`:
+
+```json
+{
+  "OpenAI": {
+    "ApiKey": "your-openai-api-key-here",
+    "DefaultModel": "gpt-4o",
+    "MaxTokens": 4096,
+    "Temperature": 0.7
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "CodePunk": "Debug"
+    }
+  }
+}
+```
+
+For development, you can also use environment variables:
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
 ## 💡 Core Features
+
+### 🤖 AI Integration & LLM Support
+- **Multiple Models**: Support for GPT-4o, GPT-4o-mini, and GPT-3.5-turbo
+- **Streaming Responses**: Real-time AI response streaming for immediate feedback
+- **Cost Tracking**: Automatic token usage and cost calculation
+- **Tool Integration**: AI can execute tools (file operations, shell commands) with proper validation
+- **Provider Abstraction**: Clean interface for adding new LLM providers (Anthropic, local models, etc.)
+- **Context Management**: Intelligent handling of conversation context and token limits
 
 ### 🗂️ Session Management
 - **Persistent Conversations**: All AI interactions are saved as sessions with full history
@@ -104,14 +148,18 @@ You'll see the CodePunk.NET welcome screen with ASCII art and a demonstration of
 ### 💬 Multi-Modal Messages  
 - **Text Content**: Rich text with markdown support and syntax highlighting
 - **Tool Integration**: Execute and track tool usage (shell commands, file operations)
-- **Image Support**: Handle images in conversations (planned for Phase 2)
+- **AI Tool Calls**: Support for AI-generated tool executions with structured parameters
+- **Tool Results**: Capture and display results from executed tools
+- **Image Support**: Handle images in conversations
 - **Structured Data**: Support for complex data types and API responses
 
 ### 🔧 Development Integration
-- **LSP Integration**: Language Server Protocol support for intelligent code understanding (Phase 2)
+- **LLM Provider Support**: OpenAI GPT-4o, GPT-4o-mini, GPT-3.5-turbo integration
+- **AI Tool Execution**: Safe execution of AI-generated commands with proper validation
 - **Shell Commands**: Execute and track shell commands with full output capture
 - **File Operations**: Read, write, and modify files with version tracking
 - **Project Awareness**: Understanding of project structure, dependencies, and build systems
+- **LSP Integration**: Language Server Protocol support for intelligent code understanding (Future)
 
 ### 🎨 Rich User Experience
 - **Beautiful CLI**: Spectre.Console-powered interface with colors, tables, and progress indicators
@@ -124,29 +172,32 @@ You'll see the CodePunk.NET welcome screen with ASCII art and a demonstration of
 - **[.NET 9.0](https://dotnet.microsoft.com/download/dotnet/9.0)**: Latest framework with native AOT and performance improvements
 - **[Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/)**: Modern ORM with SQLite provider for local data persistence
 - **[Spectre.Console](https://spectreconsole.net/)**: Rich console applications with colors, tables, and interactive widgets
+- **[Microsoft.Extensions.Http](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/http-requests)**: HTTP client factory for LLM provider integration
+- **[System.Net.Http.Json](https://docs.microsoft.com/en-us/dotnet/api/system.net.http.json)**: JSON serialization for HTTP operations
 - **[Serilog](https://serilog.net/)**: Structured logging with multiple output targets
 - **[Microsoft.Extensions.Hosting](https://docs.microsoft.com/en-us/dotnet/core/extensions/generic-host)**: Generic host for dependency injection and configuration
 - **[xUnit](https://xunit.net/) + [FluentAssertions](https://fluentassertions.com/)**: Modern testing framework with readable assertions
 
 ## 🗺️ Roadmap
 
-### 🎯 Phase 2: AI Integration (In Progress)
-- **LLM Provider Support**: OpenAI GPT-4, Anthropic Claude, and local models
-- **Streaming Responses**: Real-time AI response streaming with cancellation support
-- **Context Management**: Intelligent context window management and summarization
-- **Tool Execution**: Safe execution of AI-generated commands with user approval
-
-### 🎯 Phase 3: Advanced Features
-- **Semantic Kernel Integration**: Microsoft's AI orchestration framework
-- **Plugin System**: Extensible plugin architecture for custom tools
+### 🎯 Phase 3: Advanced AI Features (Next)
+- **Enhanced Tool System**: More sophisticated development tools and integrations
+- **Context Management**: Intelligent context window management and conversation summarization  
 - **Multi-Agent Conversations**: Support for multiple AI assistants in conversations
+- **LSP Integration**: Language Server Protocol support for intelligent code understanding
 - **Advanced UI**: Interactive file browsing, syntax highlighting, and diff views
 
-### 🎯 Phase 4: Enterprise Features  
-- **Team Collaboration**: Shared sessions and collaborative coding
-- **Integration APIs**: REST APIs for integration with IDEs and other tools
+### 🎯 Phase 4: Enterprise & Collaboration
+- **Team Collaboration**: Shared sessions and collaborative coding features
+- **Plugin System**: Extensible plugin architecture for custom tools and providers
+- **Integration APIs**: REST APIs for integration with IDEs and other development tools
 - **Security & Compliance**: Enterprise-grade security and audit logging
+
+### 🎯 Phase 5: Performance & Scale
 - **Performance Optimization**: Advanced caching, indexing, and query optimization
+- **Semantic Kernel Integration**: Microsoft's AI orchestration framework
+- **Local Model Support**: Integration with local LLM models and inference engines
+- **Advanced Analytics**: Usage analytics, performance metrics, and insights
 
 ## 🏆 Design Principles
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CodePunk.Core.Models;
 
@@ -53,6 +54,11 @@ public enum MessageRole
 /// <summary>
 /// Base class for different types of message content
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(TextPart), "text")]
+[JsonDerivedType(typeof(ToolCallPart), "tool_call")]
+[JsonDerivedType(typeof(ToolResultPart), "tool_result")]
+[JsonDerivedType(typeof(ImagePart), "image")]
 public abstract record MessagePart
 {
     public abstract MessagePartType Type { get; }

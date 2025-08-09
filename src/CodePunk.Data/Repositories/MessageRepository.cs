@@ -57,9 +57,12 @@ public class MessageRepository : IMessageRepository
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        await _context.Messages
-            .Where(m => m.Id == id)
-            .ExecuteDeleteAsync(cancellationToken);
+        var entity = await _context.Messages.FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
+        if (entity != null)
+        {
+            _context.Messages.Remove(entity);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task DeleteBySessionAsync(string sessionId, CancellationToken cancellationToken = default)

@@ -1,5 +1,7 @@
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Services;
+using CodePunk.Core.Tools;
+using CodePunk.Core.Providers;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -38,10 +40,36 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IFileHistoryRepository, FileHistoryRepository>();
 
-        // Add services
+        // Add domain services
         services.AddScoped<ISessionService, SessionService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IFileHistoryService, FileHistoryService>();
+
+        // Add LLM services
+        services.AddScoped<ILLMService, LLMService>();
+        services.AddScoped<IToolService, ToolService>();
+
+        // Add tools
+        services.AddScoped<ITool, ReadFileTool>();
+        services.AddScoped<ITool, WriteFileTool>();
+        services.AddScoped<ITool, ShellTool>();
+
+        // Add LLM providers
+        services.AddHttpClient<OpenAIProvider>();
+        services.AddScoped<ILLMProvider>(provider =>
+        {
+            var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+            var httpClient = httpClientFactory.CreateClient(nameof(OpenAIProvider));
+            
+            var config = new LLMProviderConfig
+            {
+                Name = "OpenAI",
+                ApiKey = configuration["OpenAI:ApiKey"] ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "",
+                BaseUrl = configuration["OpenAI:BaseUrl"]
+            };
+
+            return new OpenAIProvider(httpClient, config);
+        });
 
         return services;
     }

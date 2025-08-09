@@ -59,9 +59,11 @@ public class SessionRepository : ISessionRepository
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        // Efficient delete without loading the entity
-        await _context.Sessions
-            .Where(s => s.Id == id)
-            .ExecuteDeleteAsync(cancellationToken);
+        var entity = await _context.Sessions.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (entity != null)
+        {
+            _context.Sessions.Remove(entity);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
     }
 }

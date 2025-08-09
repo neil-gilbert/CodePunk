@@ -20,6 +20,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Console.Tests", "tests\CodePunk.Console.Tests\CodePunk.Console.Tests.csproj", "{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Integration.Tests", "tests\CodePunk.Integration.Tests\CodePunk.Integration.Tests.csproj", "{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -54,6 +56,10 @@ Global
 		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -66,6 +72,7 @@ Global
 		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
 		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
 		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
+		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8CC3F7A5-B9D8-4F2E-A1C6-3E7F9B2D5A4C}
