@@ -14,9 +14,12 @@
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.8" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Moq" Version="4.20.69" />
     <PackageReference Include="xunit" Version="2.4.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.5" />
   </ItemGroup>
@@ -28,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CodePunk.Core\CodePunk.Core.csproj" />
     <ProjectReference Include="..\..\src\CodePunk.Data\CodePunk.Data.csproj" />
+    <ProjectReference Include="..\..\src\CodePunk.Console\CodePunk.Console.csproj" />
     <ProjectReference Include="..\..\src\CodePunk.Infrastructure\CodePunk.Infrastructure.csproj" />
   </ItemGroup>
 

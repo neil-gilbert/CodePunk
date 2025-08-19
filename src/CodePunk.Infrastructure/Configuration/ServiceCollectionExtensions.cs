@@ -2,6 +2,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Services;
 using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
+using CodePunk.Core.Chat;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,9 @@ public static class ServiceCollectionExtensions
         // Add LLM services
         services.AddScoped<ILLMService, LLMService>();
         services.AddScoped<IToolService, ToolService>();
+
+        // Add chat services
+        services.AddScoped<InteractiveChatSession>();
 
         // Add tools
         services.AddScoped<ITool, ReadFileTool>();

@@ -1,4 +1,5 @@
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Models;
 
 namespace CodePunk.Core.Services;
 
@@ -41,6 +42,16 @@ public interface ILLMService
     /// Stream a request using a specific provider
     /// </summary>
     IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send a message using the default provider (convenience method)
+    /// </summary>
+    Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stream a message using the default provider (convenience method)
+    /// </summary>
+    IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -91,5 +102,42 @@ public class LLMService : ILLMService
         var provider = GetProvider(providerName) 
             ?? throw new ArgumentException($"Provider '{providerName}' not found", nameof(providerName));
         return provider.StreamAsync(request, cancellationToken);
+    }
+
+    public async Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
+    {
+        var request = ConvertMessagesToRequest(conversationHistory);
+        var response = await GetDefaultProvider().SendAsync(request, cancellationToken);
+        return ConvertResponseToMessage(response, conversationHistory.Last().SessionId);
+    }
+
+    public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
+    {
+        var request = ConvertMessagesToRequest(conversationHistory);
+        return GetDefaultProvider().StreamAsync(request, cancellationToken);
+    }
+
+    private static LLMRequest ConvertMessagesToRequest(IList<Message> messages)
+    {
+        return new LLMRequest
+        {
+            ModelId = "gpt-4o", // Default model - should be configurable
+            Messages = messages.ToList().AsReadOnly(),
+            MaxTokens = 4096,
+            Temperature = 0.7
+        };
+    }
+
+    private static Message ConvertResponseToMessage(LLMResponse response, string sessionId)
+    {
+        var parts = new List<MessagePart> { new TextPart(response.Content) };
+        
+        return Message.Create(
+            sessionId,
+            MessageRole.Assistant,
+            parts,
+            "gpt-4o", // Should come from response metadata
+            "OpenAI"  // Should come from provider
+        );
     }
 }
