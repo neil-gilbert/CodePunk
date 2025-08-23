@@ -46,6 +46,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IFileHistoryService, FileHistoryService>();
 
+        // Add prompt services
+        services.AddSingleton<IPromptProvider, PromptProvider>();
+
         // Add LLM services
         services.AddScoped<ILLMService, LLMService>();
         services.AddScoped<IToolService, ToolService>();

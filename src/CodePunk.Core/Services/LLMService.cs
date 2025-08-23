@@ -61,11 +61,13 @@ public class LLMService : ILLMService
 {
     private readonly IReadOnlyList<ILLMProvider> _providers;
     private readonly string _defaultProviderName;
+    private readonly IPromptProvider _promptProvider;
 
-    public LLMService(IEnumerable<ILLMProvider> providers, string defaultProviderName = "OpenAI")
+    public LLMService(IEnumerable<ILLMProvider> providers, IPromptProvider promptProvider, string defaultProviderName = "OpenAI")
     {
         _providers = providers.ToList();
         _defaultProviderName = defaultProviderName;
+        _promptProvider = promptProvider;
         
         if (!_providers.Any())
         {
@@ -106,25 +108,30 @@ public class LLMService : ILLMService
 
     public async Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
     {
-        var request = ConvertMessagesToRequest(conversationHistory);
-        var response = await GetDefaultProvider().SendAsync(request, cancellationToken);
+        var provider = GetDefaultProvider();
+        var request = ConvertMessagesToRequest(conversationHistory, provider.Name);
+        var response = await provider.SendAsync(request, cancellationToken);
         return ConvertResponseToMessage(response, conversationHistory.Last().SessionId);
     }
 
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
     {
-        var request = ConvertMessagesToRequest(conversationHistory);
-        return GetDefaultProvider().StreamAsync(request, cancellationToken);
+        var provider = GetDefaultProvider();
+        var request = ConvertMessagesToRequest(conversationHistory, provider.Name);
+        return provider.StreamAsync(request, cancellationToken);
     }
 
-    private static LLMRequest ConvertMessagesToRequest(IList<Message> messages)
+    private LLMRequest ConvertMessagesToRequest(IList<Message> messages, string providerName)
     {
+        var systemPrompt = _promptProvider.GetSystemPrompt(providerName, PromptType.Coder);
+        
         return new LLMRequest
         {
             ModelId = "gpt-4o", // Default model - should be configurable
             Messages = messages.ToList().AsReadOnly(),
             MaxTokens = 4096,
-            Temperature = 0.7
+            Temperature = 0.7,
+            SystemPrompt = systemPrompt
         };
     }
 
