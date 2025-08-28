@@ -59,40 +59,52 @@ public interface ILLMService
 /// </summary>
 public class LLMService : ILLMService
 {
-    private readonly IReadOnlyList<ILLMProvider> _providers;
-    private readonly string _defaultProviderName;
+    private readonly ILLMProviderFactory _providerFactory;
     private readonly IPromptProvider _promptProvider;
 
-    public LLMService(IEnumerable<ILLMProvider> providers, IPromptProvider promptProvider, string defaultProviderName = "OpenAI")
+    public LLMService(ILLMProviderFactory providerFactory, IPromptProvider promptProvider)
     {
-        _providers = providers.ToList();
-        _defaultProviderName = defaultProviderName;
+        _providerFactory = providerFactory;
         _promptProvider = promptProvider;
-        
-        if (!_providers.Any())
+    }
+
+    public IReadOnlyList<ILLMProvider> GetProviders()
+    {
+        var providers = new List<ILLMProvider>();
+        foreach (var providerName in _providerFactory.GetAvailableProviders())
         {
-            throw new InvalidOperationException("No LLM providers registered");
+            try
+            {
+                providers.Add(_providerFactory.GetProvider(providerName));
+            }
+            catch
+            {
+                // Skip providers that can't be created
+            }
+        }
+        return providers;
+    }
+
+    public ILLMProvider? GetProvider(string name)
+    {
+        try
+        {
+            return _providerFactory.GetProvider(name);
+        }
+        catch
+        {
+            return null;
         }
     }
 
-    public IReadOnlyList<ILLMProvider> GetProviders() => _providers;
-
-    public ILLMProvider? GetProvider(string name) =>
-        _providers.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-    public ILLMProvider GetDefaultProvider()
-    {
-        var provider = GetProvider(_defaultProviderName) ?? _providers.First();
-        return provider;
-    }
+    public ILLMProvider GetDefaultProvider() => _providerFactory.GetProvider();
 
     public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) =>
         GetDefaultProvider().SendAsync(request, cancellationToken);
 
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default)
     {
-        var provider = GetProvider(providerName) 
-            ?? throw new ArgumentException($"Provider '{providerName}' not found", nameof(providerName));
+        var provider = _providerFactory.GetProvider(providerName);
         return provider.SendAsync(request, cancellationToken);
     }
 
@@ -101,8 +113,7 @@ public class LLMService : ILLMService
 
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default)
     {
-        var provider = GetProvider(providerName) 
-            ?? throw new ArgumentException($"Provider '{providerName}' not found", nameof(providerName));
+        var provider = _providerFactory.GetProvider(providerName);
         return provider.StreamAsync(request, cancellationToken);
     }
 
@@ -111,7 +122,7 @@ public class LLMService : ILLMService
         var provider = GetDefaultProvider();
         var request = ConvertMessagesToRequest(conversationHistory, provider.Name);
         var response = await provider.SendAsync(request, cancellationToken);
-        return ConvertResponseToMessage(response, conversationHistory.Last().SessionId);
+        return ConvertResponseToMessage(response, conversationHistory.Last().SessionId, provider.Name);
     }
 
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
@@ -124,10 +135,12 @@ public class LLMService : ILLMService
     private LLMRequest ConvertMessagesToRequest(IList<Message> messages, string providerName)
     {
         var systemPrompt = _promptProvider.GetSystemPrompt(providerName, PromptType.Coder);
+        var provider = _providerFactory.GetProvider(providerName);
+        var defaultModel = provider.Models.FirstOrDefault()?.Id ?? "gpt-4o";
         
         return new LLMRequest
         {
-            ModelId = "gpt-4o", // Default model - should be configurable
+            ModelId = defaultModel,
             Messages = messages.ToList().AsReadOnly(),
             MaxTokens = 4096,
             Temperature = 0.7,
@@ -135,7 +148,7 @@ public class LLMService : ILLMService
         };
     }
 
-    private static Message ConvertResponseToMessage(LLMResponse response, string sessionId)
+    private static Message ConvertResponseToMessage(LLMResponse response, string sessionId, string providerName)
     {
         var parts = new List<MessagePart> { new TextPart(response.Content) };
         
@@ -143,8 +156,8 @@ public class LLMService : ILLMService
             sessionId,
             MessageRole.Assistant,
             parts,
-            "gpt-4o", // Should come from response metadata
-            "OpenAI"  // Should come from provider
+            null, // Model should come from response metadata
+            providerName
         );
     }
 }

@@ -2,12 +2,14 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Services;
 using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
+using CodePunk.Core.Providers.Anthropic;
 using CodePunk.Core.Chat;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace CodePunk.Infrastructure.Configuration;
 
@@ -62,21 +64,71 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, ShellTool>();
 
         // Add LLM providers
-        services.AddHttpClient<OpenAIProvider>();
-        services.AddScoped<ILLMProvider>(provider =>
+        services.AddLLMProviders(configuration);
+
+        return services;
+    }
+
+    public static IServiceCollection AddLLMProviders(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register provider factory
+        services.AddSingleton<ILLMProviderFactory, LLMProviderFactory>();
+
+        // Add OpenAI provider
+        var openAIApiKey = configuration["AI:Providers:OpenAI:ApiKey"] ?? 
+                          configuration["OpenAI:ApiKey"] ?? // Backward compatibility
+                          Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "";
+
+        if (!string.IsNullOrEmpty(openAIApiKey))
         {
-            var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
-            var httpClient = httpClientFactory.CreateClient(nameof(OpenAIProvider));
-            
-            var config = new LLMProviderConfig
+            services.AddHttpClient<OpenAIProvider>();
+            services.AddTransient<OpenAIProvider>(provider =>
             {
-                Name = "OpenAI",
-                ApiKey = configuration["OpenAI:ApiKey"] ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "",
-                BaseUrl = configuration["OpenAI:BaseUrl"]
+                var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+                var httpClient = httpClientFactory.CreateClient(nameof(OpenAIProvider));
+                
+                var config = new LLMProviderConfig
+                {
+                    Name = "OpenAI",
+                    ApiKey = openAIApiKey,
+                    BaseUrl = configuration["AI:Providers:OpenAI:BaseUrl"] ?? 
+                             configuration["OpenAI:BaseUrl"] ?? 
+                             "https://api.openai.com/v1"
+                };
+
+                return new OpenAIProvider(httpClient, config);
+            });
+        }
+
+        // Add Anthropic provider
+        var anthropicApiKey = configuration["AI:Providers:Anthropic:ApiKey"] ?? 
+                             Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? "";
+
+        if (!string.IsNullOrEmpty(anthropicApiKey))
+        {
+            var anthropicConfig = new AnthropicConfiguration
+            {
+                ApiKey = anthropicApiKey,
+                BaseUrl = configuration["AI:Providers:Anthropic:BaseUrl"] ?? "https://api.anthropic.com/v1",
+                DefaultModel = configuration["AI:Providers:Anthropic:DefaultModel"] ?? AnthropicModels.Claude35Sonnet,
+                MaxTokens = configuration.GetValue("AI:Providers:Anthropic:MaxTokens", 4096),
+                Temperature = configuration.GetValue("AI:Providers:Anthropic:Temperature", 0.7),
+                Version = configuration["AI:Providers:Anthropic:Version"] ?? "2023-06-01"
             };
 
-            return new OpenAIProvider(httpClient, config);
-        });
+            services.AddSingleton(anthropicConfig);
+            services.AddHttpClient<AnthropicProvider>();
+            services.AddTransient<AnthropicProvider>(provider =>
+            {
+                var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+                var httpClient = httpClientFactory.CreateClient(nameof(AnthropicProvider));
+                var logger = provider.GetRequiredService<ILogger<AnthropicProvider>>();
+                
+                return new AnthropicProvider(httpClient, anthropicConfig, logger);
+            });
+        }
 
         return services;
     }

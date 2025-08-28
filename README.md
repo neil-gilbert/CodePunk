@@ -26,7 +26,8 @@ dotnet build
 
 # Configure your AI provider
 export OPENAI_API_KEY="your-key-here"
-# OR export ANTHROPIC_API_KEY="your-key-here"
+# OR
+export ANTHROPIC_API_KEY="your-key-here"
 
 # Run CodePunk
 dotnet run --project src/CodePunk.Console
@@ -55,28 +56,56 @@ CodePunk works with multiple AI providers through a unified interface:
 
 ### Supported Providers
 - **OpenAI**: GPT-4o, GPT-4o-mini, GPT-3.5-turbo
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Haiku *(coming soon)*
+- **Anthropic**: Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku
 - **Local Models**: Ollama, LM Studio integration *(coming soon)*
 - **Azure OpenAI**: Enterprise deployments *(coming soon)*
 
 ### Provider Configuration
 ```json
 {
-  "LLM": {
-    "DefaultProvider": "OpenAI",
+  "AI": {
+    "DefaultProvider": "anthropic",
     "Providers": {
       "OpenAI": {
         "ApiKey": "your-openai-key",
-        "DefaultModel": "gpt-4o"
+        "DefaultModel": "gpt-4o",
+        "MaxTokens": 4096,
+        "Temperature": 0.7
       },
       "Anthropic": {
         "ApiKey": "your-anthropic-key", 
-        "DefaultModel": "claude-3-5-sonnet"
+        "DefaultModel": "claude-3-5-sonnet-20241022",
+        "MaxTokens": 4096,
+        "Temperature": 0.7,
+        "Version": "2023-06-01"
       }
     }
   }
 }
 ```
+
+### Environment Variables (Recommended)
+```bash
+# OpenAI
+export OPENAI_API_KEY="your-openai-key-here"
+
+# Anthropic  
+export ANTHROPIC_API_KEY="your-anthropic-key-here"
+
+# Set default provider in appsettings.json or switch dynamically
+```
+
+### Provider Comparison
+
+| Feature | OpenAI GPT-4o | Anthropic Claude 3.5 |
+|---------|---------------|----------------------|
+| **Context Window** | 128K tokens | 200K tokens |
+| **Best For** | Complex reasoning, detailed analysis | Code review, concise explanations |
+| **Streaming** | ✅ | ✅ |
+| **Tool Calling** | ✅ | ✅ |
+| **Cost (Input)** | $2.50/1M tokens | $3.00/1M tokens |
+| **Cost (Output)** | $10.00/1M tokens | $15.00/1M tokens |
+| **Response Style** | Verbose, comprehensive | Concise, focused |
 
 ## 🛠️ Core Features
 
@@ -118,33 +147,23 @@ CodePunk is built with clean architecture principles, making it extensible and m
 - **UI**: Spectre.Console for rich terminal experiences
 - **Testing**: Comprehensive test suite with 100% core coverage
 
-## 📊 Current Status
-
-### ✅ Phase 1: Foundation Complete
-- **Clean Architecture**: Modular design with clear separation of concerns
-- **Data Persistence**: SQLite with Entity Framework Core for session management
-- **Rich Terminal UI**: Spectre.Console interface with real-time streaming
-- **Comprehensive Testing**: 57/57 tests passing with full coverage
-
-### ✅ Phase 2: LLM Integration Complete  
-- **Multi-Provider Support**: OpenAI GPT-4o, GPT-4o-mini, GPT-3.5-turbo
-- **Streaming Responses**: Real-time AI output with `IAsyncEnumerable`
-- **Tool Execution**: AI can read files, execute shell commands, modify code
-- **Cost Tracking**: Token usage and cost calculation
-
-### ✅ Phase 3: Interactive Chat Complete
-- **Session Persistence**: Full conversation history and context management
-- **File Tracking**: Associate code changes with specific conversations
-- **Command System**: Built-in commands for session management and tool execution
-- **Error Handling**: Robust error recovery and user feedback
-
-### 🚧 Coming Next
-- **Anthropic Claude Integration**: Claude 3.5 Sonnet support
-- **Local Model Support**: Ollama and LM Studio integration  
-- **Enhanced Tools**: Git operations, database queries, API testing
-- **LSP Integration**: Language server protocol for intelligent code analysis
-
 ## 🌟 Use Cases
+
+### Provider-Specific Strengths
+
+**OpenAI GPT-4o**: Excellent for complex reasoning, code generation, and detailed analysis
+```bash
+> /provider openai
+> Analyze this entire codebase and suggest architectural improvements
+> /file src/
+```
+
+**Anthropic Claude**: Superior for code review, concise explanations, and safety-conscious responses
+```bash
+> /provider anthropic
+> Review this code for security vulnerabilities and provide brief, actionable fixes
+> /file auth.py
+```
 
 ### Code Review & Analysis
 ```bash
@@ -175,6 +194,19 @@ CodePunk is built with clean architecture principles, making it extensible and m
 > Maintain backward compatibility
 ```
 
+### Dynamic Provider Switching
+```bash
+# Switch to Anthropic for concise code review
+> /provider anthropic
+> Review this function for bugs - be brief and specific
+> /file utils.py
+
+# Switch to OpenAI for detailed architecture discussion  
+> /provider openai
+> Explain the design patterns used in this codebase and suggest improvements
+> /file src/
+```
+
 ## 🤝 Contributing
 
 CodePunk is open source and welcomes contributions from engineers working in any language:
@@ -184,26 +216,35 @@ CodePunk is open source and welcomes contributions from engineers working in any
 git clone https://github.com/charmbracelet/crush
 cd crush/CodePunk.NET
 dotnet restore
-dotnet test  # Ensure all 57 tests pass
+dotnet test  # Ensure all 83 tests pass
 ```
 
 ### Areas for Contribution
-- **AI Provider Integration**: Add Anthropic, local models, or other providers
+- **AI Provider Integration**: Add local models, Azure OpenAI, or other providers
 - **Tool Development**: Create tools for specific languages or frameworks
 - **Language Support**: Enhance support for specific programming languages
 - **Performance**: Optimize response times and memory usage
 - **Documentation**: Examples, tutorials, and integration guides
 
 ### Adding New Providers
+The provider system is designed for easy extensibility:
+
 ```csharp
-public class AnthropicProvider : ILLMProvider
+public class NewProvider : ILLMProvider
 {
-    public string Name => "Anthropic";
+    public string Name => "NewProvider";
+    public IReadOnlyList<LLMModel> Models { get; }
     
     public async Task<LLMResponse> SendAsync(LLMRequest request, 
         CancellationToken cancellationToken = default)
     {
-        // Implementation for Claude API
+        // Implementation for new provider API
+    }
+    
+    public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, 
+        CancellationToken cancellationToken = default)
+    {
+        // Streaming implementation
     }
 }
 ```
