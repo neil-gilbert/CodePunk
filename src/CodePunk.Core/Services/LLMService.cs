@@ -61,11 +61,13 @@ public class LLMService : ILLMService
 {
     private readonly ILLMProviderFactory _providerFactory;
     private readonly IPromptProvider _promptProvider;
+    private readonly IToolService _toolService;
 
-    public LLMService(ILLMProviderFactory providerFactory, IPromptProvider promptProvider)
+    public LLMService(ILLMProviderFactory providerFactory, IPromptProvider promptProvider, IToolService toolService)
     {
         _providerFactory = providerFactory;
         _promptProvider = promptProvider;
+        _toolService = toolService;
     }
 
     public IReadOnlyList<ILLMProvider> GetProviders()
@@ -142,6 +144,7 @@ public class LLMService : ILLMService
         {
             ModelId = defaultModel,
             Messages = messages.ToList().AsReadOnly(),
+            Tools = _toolService.GetLLMTools(),
             MaxTokens = 4096,
             Temperature = 0.7,
             SystemPrompt = systemPrompt

@@ -21,11 +21,13 @@ public class InteractiveChatSessionTests : IDisposable
         _mockSessionService = new Mock<ISessionService>();
         _mockMessageService = new Mock<IMessageService>();
         _mockLLMService = new Mock<ILLMService>();
+        var mockToolService = new Mock<IToolService>();
         
         _chatSession = new InteractiveChatSession(
             _mockSessionService.Object,
             _mockMessageService.Object,
             _mockLLMService.Object,
+            mockToolService.Object,
             NullLogger<InteractiveChatSession>.Instance);
     }
 
@@ -120,30 +122,30 @@ public class InteractiveChatSessionTests : IDisposable
         const string aiContent = "Hello, human!";
         
         var mockMessages = new List<Message>();
-        var aiResponse = Message.Create(
-            _chatSession.CurrentSession!.Id,
-            MessageRole.Assistant,
-            [new TextPart(aiContent)],
-            "gpt-4",
-            "OpenAI");
+        var streamChunks = new List<LLMStreamChunk>
+        {
+            new() { Content = aiContent, IsComplete = true }
+        };
 
         _mockMessageService
             .Setup(m => m.CreateAsync(It.IsAny<Message>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Message m, CancellationToken _) => m);
             
         _mockMessageService
-            .Setup(m => m.GetBySessionAsync(_chatSession.CurrentSession.Id, It.IsAny<CancellationToken>()))
+            .Setup(m => m.GetBySessionAsync(_chatSession.CurrentSession!.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockMessages);
             
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(aiResponse);
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Returns(streamChunks.ToAsyncEnumerable());
 
         // Act
         var result = await _chatSession.SendMessageAsync(userContent);
 
         // Assert
-        result.Should().BeEquivalentTo(aiResponse);
+        result.Should().NotBeNull();
+        result.Role.Should().Be(MessageRole.Assistant);
+        result.Parts.OfType<TextPart>().First().Content.Should().Be(aiContent);
         _chatSession.IsProcessing.Should().BeFalse();
         
         // Verify user message was saved
@@ -154,10 +156,14 @@ public class InteractiveChatSessionTests : IDisposable
             It.IsAny<CancellationToken>()), Times.Once);
             
         // Verify AI response was saved
-        _mockMessageService.Verify(m => m.CreateAsync(aiResponse, It.IsAny<CancellationToken>()), Times.Once);
+        _mockMessageService.Verify(m => m.CreateAsync(
+            It.Is<Message>(msg => 
+                msg.Role == MessageRole.Assistant &&
+                msg.Parts.OfType<TextPart>().First().Content == aiContent),
+            It.IsAny<CancellationToken>()), Times.Once);
         
         // Verify LLM service was called
-        _mockLLMService.Verify(l => l.SendMessageAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockLLMService.Verify(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -288,14 +294,15 @@ public class InteractiveChatSessionTests : IDisposable
         await SetupActiveSessionAsync();
         var processingStates = new List<bool>();
         
+        var streamChunks = new List<LLMStreamChunk>
+        {
+            new() { Content = "Response", IsComplete = true }
+        };
+        
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
-            .Returns(async () =>
-            {
-                processingStates.Add(_chatSession.IsProcessing);
-                await Task.Delay(10); // Simulate processing time
-                return Message.Create(_chatSession.CurrentSession!.Id, MessageRole.Assistant, [new TextPart("Response")]);
-            });
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Callback(() => processingStates.Add(_chatSession.IsProcessing))
+            .Returns(streamChunks.ToAsyncEnumerable());
 
         _mockMessageService
             .Setup(m => m.CreateAsync(It.IsAny<Message>(), It.IsAny<CancellationToken>()))

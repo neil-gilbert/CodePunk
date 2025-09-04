@@ -106,7 +106,9 @@ public class WriteFileTool : ITool
     {
         try
         {
-            if (!arguments.TryGetProperty("path", out var pathElement) ||
+            // Accept both "path" and "file_path" arguments to be compatible with common tool schemas
+            JsonElement pathElement;
+            if (!(arguments.TryGetProperty("path", out pathElement) || arguments.TryGetProperty("file_path", out pathElement)) ||
                 !arguments.TryGetProperty("content", out var contentElement))
             {
                 return new ToolResult
@@ -119,6 +121,17 @@ public class WriteFileTool : ITool
 
             var filePath = pathElement.GetString();
             var content = contentElement.GetString();
+            
+            // Normalize to absolute path relative to current working directory
+            if (!string.IsNullOrEmpty(filePath) && !Path.IsPathFullyQualified(filePath))
+            {
+                filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), filePath));
+            }
+            
+            // Log the arguments for debugging
+            Console.WriteLine($"[DEBUG] WriteFileTool - Working Directory: {Directory.GetCurrentDirectory()}");
+            Console.WriteLine($"[DEBUG] WriteFileTool - Requested Path: {filePath}");
+            Console.WriteLine($"[DEBUG] WriteFileTool - Content Length: {content?.Length ?? 0}");
 
             if (string.IsNullOrEmpty(filePath))
             {
@@ -134,11 +147,20 @@ public class WriteFileTool : ITool
             var directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
+                Console.WriteLine($"[DEBUG] WriteFileTool - Creating directory: {directory}");
                 Directory.CreateDirectory(directory);
             }
 
-            await File.WriteAllTextAsync(filePath, content ?? string.Empty, cancellationToken);
-            return new ToolResult { Content = $"Successfully wrote to {filePath}" };
+            // Resolve the full path for debugging
+            var fullPath = Path.GetFullPath(filePath);
+            Console.WriteLine($"[DEBUG] WriteFileTool - Full Path: {fullPath}");
+
+            await File.WriteAllTextAsync(fullPath, content ?? string.Empty, cancellationToken);
+            
+            Console.WriteLine($"[DEBUG] WriteFileTool - File written successfully to: {fullPath}");
+            Console.WriteLine($"[DEBUG] WriteFileTool - File exists check: {File.Exists(fullPath)}");
+            
+            return new ToolResult { Content = $"Successfully wrote to {fullPath}" };
         }
         catch (Exception ex)
         {

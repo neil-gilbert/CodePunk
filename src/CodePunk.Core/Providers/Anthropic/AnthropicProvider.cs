@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -25,7 +26,8 @@ public class AnthropicProvider : ILLMProvider
         _logger = logger;
 
         // Configure HTTP client
-        _httpClient.BaseAddress = new Uri(config.BaseUrl);
+        var baseUrl = config.BaseUrl.TrimEnd('/') + "/";
+        _httpClient.BaseAddress = new Uri(baseUrl);
         _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", config.Version);
         _httpClient.Timeout = config.Timeout;
@@ -37,13 +39,29 @@ public class AnthropicProvider : ILLMProvider
     {
         try
         {
-            var anthropicRequest = ConvertToAnthropicRequest(request);
-            var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-
+        var anthropicRequest = ConvertToAnthropicRequest(request);
+        
+        // Log request information to verify tools are being sent
+        _logger.LogInformation("Anthropic request: Tools count={ToolCount}", anthropicRequest.Tools?.Count ?? 0);
+        if (anthropicRequest.Tools?.Any() == true)
+        {
+            _logger.LogInformation("Anthropic request tools: {Tools}", 
+                string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
+        }
+        
+        var jsonOptions = new JsonSerializerOptions {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true
+        };
             _logger.LogDebug("Sending request to Anthropic API for model {Model}", request.ModelId);
 
-            var response = await _httpClient.PostAsJsonAsync("/messages", anthropicRequest, jsonOptions, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            var response = await _httpClient.PostAsJsonAsync("messages", anthropicRequest, jsonOptions, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Anthropic API error {Status}: {Body}", (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
 
             var anthropicResponse = await response.Content.ReadFromJsonAsync<AnthropicResponse>(jsonOptions, cancellationToken);
             
@@ -75,83 +93,252 @@ public class AnthropicProvider : ILLMProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var anthropicRequest = ConvertToAnthropicRequest(request);
+        
+        // Log request information to verify tools are being sent
+        _logger.LogInformation("Anthropic streaming request: Tools count={ToolCount}", anthropicRequest.Tools?.Count ?? 0);
+        if (anthropicRequest.Tools?.Any() == true)
+        {
+            _logger.LogInformation("Anthropic streaming request tools: {Tools}", 
+                string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
+        }
+        
         anthropicRequest.Stream = true;
 
-        var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+        var jsonOptions = new JsonSerializerOptions {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true
+        };
         var content = JsonContent.Create(anthropicRequest, options: jsonOptions);
 
         _logger.LogDebug("Starting streaming request to Anthropic API for model {Model}", request.ModelId);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/messages")
+    using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
         {
             Content = content
         };
 
+    // Ensure server-sent events are returned for streaming
+    httpRequest.Headers.Accept.Clear();
+    httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+
         using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError("Anthropic streaming API error {Status}: {Body}", (int)response.StatusCode, err);
+            response.EnsureSuccessStatusCode();
+        }
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        var tokenUsage = new LLMUsage();
+        _logger.LogInformation("Starting to read Anthropic streaming response");
+        
+        LLMUsage? tokenUsage = null;
+        var toolCallBuilders = new Dictionary<int, (ToolCall toolCall, StringBuilder jsonBuilder)>();
 
         while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
             
-            if (string.IsNullOrEmpty(line) || !line.StartsWith("data: "))
+            if (string.IsNullOrEmpty(line))
                 continue;
 
-            var jsonData = line.Substring(6); // Remove "data: " prefix
+            var trimmed = line.Trim();
+            // Remove UTF-8 BOM if present
+            if (trimmed.Length > 0 && trimmed[0] == '\uFEFF')
+            {
+                trimmed = trimmed.TrimStart('\uFEFF');
+            }
+            if (trimmed.StartsWith("event: "))
+            {
+                // We can ignore event lines for now, but might be useful for more robust parsing
+                continue;
+            }
             
-            if (jsonData == "[DONE]")
-                break;
-
-            AnthropicStreamResponse? streamResponse;
-            try
+            if (trimmed.StartsWith("data:") || trimmed.StartsWith("{") || trimmed.Contains("\"type\":"))
             {
-                streamResponse = JsonSerializer.Deserialize<AnthropicStreamResponse>(jsonData, jsonOptions);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse streaming response: {JsonData}", jsonData);
-                continue;
-            }
-
-            if (streamResponse?.Delta?.Text != null)
-            {
-                yield return new LLMStreamChunk
+                string jsonData = trimmed;
+                var dataIndex = trimmed.IndexOf("data:");
+                if (dataIndex >= 0)
                 {
-                    Content = streamResponse.Delta.Text,
-                    IsComplete = streamResponse.Type == "message_stop"
-                };
-            }
+                    jsonData = trimmed.Substring(dataIndex + 5).TrimStart();
+                }
 
-            if (streamResponse?.Usage != null)
-            {
-                tokenUsage = new LLMUsage
-                {
-                    InputTokens = streamResponse.Usage.InputTokens,
-                    OutputTokens = streamResponse.Usage.OutputTokens
-                };
-            }
+                if (jsonData == "[DONE]")
+                    break;
 
-            if (streamResponse?.Type == "message_stop")
-            {
-                yield return new LLMStreamChunk
+                AnthropicStreamResponse? streamResponse;
+                try
                 {
-                    Usage = tokenUsage,
-                    IsComplete = true,
-                    FinishReason = LLMFinishReason.Stop
-                };
-                break;
+                    streamResponse = JsonSerializer.Deserialize<AnthropicStreamResponse>(jsonData, jsonOptions);
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse streaming response: {JsonData}", jsonData);
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unexpected error parsing streaming response: {JsonData}", jsonData);
+                    continue;
+                }
+
+                if (streamResponse == null) continue;
+
+                switch (streamResponse.Type)
+                {
+                    case "message_start":
+                        if (streamResponse.Message?.Usage != null)
+                        {
+                            tokenUsage = new LLMUsage { InputTokens = streamResponse.Message.Usage.InputTokens };
+                        }
+                        break;
+
+                    case "content_block_start":
+                        if (streamResponse.ContentBlock?.Type == "tool_use" && streamResponse.Index.HasValue)
+                        {
+                            var toolCall = new ToolCall
+                            {
+                                Id = streamResponse.ContentBlock.Id ?? string.Empty,
+                                Name = streamResponse.ContentBlock.Name ?? string.Empty,
+                            };
+                            toolCallBuilders[streamResponse.Index.Value] = (toolCall, new StringBuilder());
+                            _logger.LogInformation("Started tool call stream for '{ToolName}' (ID: {ToolId}) at index {Index}", 
+                                toolCall.Name, toolCall.Id, streamResponse.Index.Value);
+                        }
+                        break;
+
+                    case "content_block_delta":
+                        // Handle tool input streaming
+                        if (streamResponse.Index.HasValue && toolCallBuilders.TryGetValue(streamResponse.Index.Value, out var builder))
+                        {
+                            if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
+                                streamResponse.Delta.TryGetProperty("type", out var deltaType) &&
+                                deltaType.GetString() == "input_json_delta" &&
+                                streamResponse.Delta.TryGetProperty("partial_json", out var partialJson))
+                            {
+                                builder.jsonBuilder.Append(partialJson.GetString());
+                            }
+                        }
+                        // Handle text streaming
+                        if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
+                            streamResponse.Delta.TryGetProperty("type", out var deltaType2) &&
+                            deltaType2.GetString() == "text_delta" &&
+                            streamResponse.Delta.TryGetProperty("text", out var textDelta))
+                        {
+                            yield return new LLMStreamChunk
+                            {
+                                Content = textDelta.GetString(),
+                                IsComplete = false
+                            };
+                        }
+                        break;
+                    
+                    case "content_block_stop":
+                        if (streamResponse.Index.HasValue && toolCallBuilders.Remove(streamResponse.Index.Value, out var finishedBuilder))
+                        {
+                            var (toolCall, jsonBuilder) = finishedBuilder;
+                            var finalJson = jsonBuilder.ToString();
+                            LLMStreamChunk? toolChunk = null;
+                            try
+                            {
+                                var arguments = JsonSerializer.Deserialize<JsonElement>(finalJson);
+                                _logger.LogInformation("Completed tool call stream for '{ToolName}' (ID: {ToolId}). Arguments: {Arguments}",
+                                    toolCall.Name, toolCall.Id, finalJson);
+
+                                toolChunk = new LLMStreamChunk
+                                {
+                                    ToolCall = new ToolCall
+                                    {
+                                        Id = toolCall.Id,
+                                        Name = toolCall.Name,
+                                        Arguments = arguments
+                                    },
+                                    IsComplete = false
+                                };
+                            }
+                            catch (JsonException ex)
+                            {
+                                _logger.LogError(ex, "Failed to parse final JSON for tool call '{ToolName}' (ID: {ToolId}). JSON: {Json}",
+                                    toolCall.Name, toolCall.Id, finalJson);
+                            }
+
+                            if (toolChunk != null)
+                            {
+                                yield return toolChunk;
+                            }
+                        }
+                        break;
+
+                    case "message_delta":
+                        if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
+                            streamResponse.Delta.TryGetProperty("stop_reason", out var stopReason))
+                        {
+                            LLMUsage? finalUsage = null;
+                            if (streamResponse.Usage != null)
+                            {
+                                finalUsage = new LLMUsage 
+                                { 
+                                    InputTokens = tokenUsage?.InputTokens ?? 0, 
+                                    OutputTokens = streamResponse.Usage.OutputTokens 
+                                };
+                            }
+                            
+                            _logger.LogInformation("Anthropic streaming response completed with reason: {StopReason}", stopReason.GetString());
+                            yield return new LLMStreamChunk
+                            {
+                                Usage = finalUsage,
+                                IsComplete = true,
+                                FinishReason = ConvertFinishReason(stopReason.GetString())
+                            };
+                        }
+                        else if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
+                                 streamResponse.Delta.TryGetProperty("text", out var text))
+                        {
+                            yield return new LLMStreamChunk
+                            {
+                                Content = text.GetString(),
+                                IsComplete = false
+                            };
+                        }
+                        break;
+
+                    case "message_stop":
+                        _logger.LogInformation("Anthropic streaming response stopped.");
+                        // Prefer usage from this event; fall back to any earlier captured input tokens
+                        LLMUsage? completeUsage = null;
+                        if (streamResponse.Usage != null)
+                        {
+                            completeUsage = new LLMUsage
+                            {
+                                InputTokens = tokenUsage?.InputTokens ?? streamResponse.Usage.InputTokens,
+                                OutputTokens = streamResponse.Usage.OutputTokens
+                            };
+                        }
+                        else if (tokenUsage != null)
+                        {
+                            completeUsage = tokenUsage;
+                        }
+
+                        yield return new LLMStreamChunk
+                        {
+                            Usage = completeUsage,
+                            IsComplete = true,
+                            FinishReason = LLMFinishReason.Stop
+                        };
+                        break;
+                }
             }
         }
+        
+        _logger.LogInformation("Finished reading Anthropic streaming response");
     }
 
     private AnthropicRequest ConvertToAnthropicRequest(LLMRequest request)
     {
         var (messages, systemPrompt) = ConvertMessages(request.Messages, request.SystemPrompt);
+        var tools = ConvertTools(request.Tools);
 
         return new AnthropicRequest
         {
@@ -159,8 +346,29 @@ public class AnthropicProvider : ILLMProvider
             MaxTokens = request.MaxTokens,
             Temperature = request.Temperature,
             System = systemPrompt,
-            Messages = messages
+            Messages = messages,
+            Tools = tools?.Count > 0 ? tools : null
         };
+    }
+
+    private List<AnthropicTool>? ConvertTools(IReadOnlyList<LLMTool>? tools)
+    {
+        if (tools == null || tools.Count == 0)
+            return null;
+
+        var anthropicTools = new List<AnthropicTool>();
+        
+        foreach (var tool in tools)
+        {
+            anthropicTools.Add(new AnthropicTool
+            {
+                Name = tool.Name,
+                Description = tool.Description,
+                InputSchema = tool.Parameters
+            });
+        }
+        
+        return anthropicTools;
     }
 
     private (List<AnthropicMessage>, string?) ConvertMessages(IReadOnlyList<Message> messages, string? systemPrompt)
@@ -170,8 +378,18 @@ public class AnthropicProvider : ILLMProvider
 
         foreach (var message in messages)
         {
-            // Extract system messages and combine them
-            if (message.Role == MessageRole.System)
+            var role = message.Role switch
+            {
+                MessageRole.System => "system",
+                MessageRole.User => "user",
+                MessageRole.Assistant => "assistant",
+                MessageRole.Tool => "user", // Tool results are sent with the 'user' role
+                _ => null
+            };
+
+            if (role == null) continue;
+
+            if (role == "system")
             {
                 var textPart = message.Parts.OfType<TextPart>().FirstOrDefault();
                 if (textPart != null)
@@ -183,17 +401,61 @@ public class AnthropicProvider : ILLMProvider
                 continue;
             }
 
-            // Skip tool messages for now (can be implemented later)
-            if (message.Role == MessageRole.Tool)
-                continue;
-
-            var content = GetMessageContent(message);
-            if (!string.IsNullOrEmpty(content))
+            var contentParts = new List<object>();
+            
+            // Text parts
+            var textContent = string.Join("\n", message.Parts.OfType<TextPart>().Select(p => p.Content));
+            if (!string.IsNullOrEmpty(textContent))
             {
+                contentParts.Add(new AnthropicTextContent { Text = textContent });
+            }
+
+            // Tool call parts (from assistant)
+            var toolCallParts = message.Parts.OfType<ToolCallPart>().ToList();
+            if (toolCallParts.Any())
+            {
+                foreach (var part in toolCallParts)
+                {
+                    contentParts.Add(new AnthropicToolUseContent
+                    {
+                        Id = part.Id,
+                        Name = part.Name,
+                        Input = part.Arguments
+                    });
+                }
+            }
+            
+            // Tool result parts (from user)
+            var toolResultParts = message.Parts.OfType<ToolResultPart>().ToList();
+            if (toolResultParts.Any())
+            {
+                role = "user"; // Tool results must be in a user message
+                foreach (var part in toolResultParts)
+                {
+                    contentParts.Add(new AnthropicToolResultContent
+                    {
+                        Type = "tool_result",
+                        ToolUseId = part.ToolCallId,
+                        Content = part.Content,
+                        IsError = part.IsError
+                    });
+                }
+            }
+
+            if (contentParts.Count > 0)
+            {
+                // If the message was originally an assistant message but we are adding tool calls,
+                // ensure the role is correct.
+                if (message.Role == MessageRole.Assistant)
+                {
+                    role = "assistant";
+                }
+
+                // Always send content as an array of content blocks per Anthropic Messages API
                 anthropicMessages.Add(new AnthropicMessage
                 {
-                    Role = message.Role == MessageRole.User ? "user" : "assistant",
-                    Content = content
+                    Role = role,
+                    Content = contentParts
                 });
             }
         }
@@ -210,10 +472,31 @@ public class AnthropicProvider : ILLMProvider
     private LLMResponse ConvertFromAnthropicResponse(AnthropicResponse response)
     {
         var content = response.Content.FirstOrDefault(c => c.Type == "text")?.Text ?? string.Empty;
+        
+        // Extract tool calls from response
+        var toolCalls = response.Content
+            .Where(c => c.Type == "tool_use")
+            .Select(c => new ToolCall
+            {
+                Id = c.Id ?? string.Empty,
+                Name = c.Name ?? string.Empty,
+                Arguments = JsonSerializer.SerializeToElement(c.Input ?? new object())
+            })
+            .ToList();
+
+        // Log tool call information
+        _logger.LogInformation("Anthropic response: Content blocks={ContentBlocks}, Tool calls found={ToolCallCount}", 
+            response.Content.Count, toolCalls.Count);
+        
+        if (toolCalls.Any())
+        {
+            _logger.LogInformation("Found tool calls: {ToolNames}", string.Join(", ", toolCalls.Select(t => t.Name)));
+        }
 
         return new LLMResponse
         {
             Content = content,
+            ToolCalls = toolCalls.Any() ? toolCalls : null,
             Usage = response.Usage != null ? new LLMUsage
             {
                 InputTokens = response.Usage.InputTokens,

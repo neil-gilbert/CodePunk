@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace CodePunk.Core.Providers.Anthropic;
@@ -20,8 +21,23 @@ public class AnthropicRequest
     [JsonPropertyName("messages")]
     public List<AnthropicMessage> Messages { get; set; } = new();
 
+    [JsonPropertyName("tools")]
+    public List<AnthropicTool>? Tools { get; set; }
+
     [JsonPropertyName("stream")]
     public bool Stream { get; set; }
+}
+
+public class AnthropicTool
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("input_schema")]
+    public object InputSchema { get; set; } = new();
 }
 
 public class AnthropicMessage
@@ -30,7 +46,41 @@ public class AnthropicMessage
     public string Role { get; set; } = string.Empty;
 
     [JsonPropertyName("content")]
+    public List<object> Content { get; set; } = new();
+}
+
+public class AnthropicTextContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text";
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+}
+
+public class AnthropicToolUseContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "tool_use";
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("input")]
+    public object Input { get; set; } = new();
+}
+
+public class AnthropicToolResultContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "tool_result";
+    [JsonPropertyName("tool_use_id")]
+    public string ToolUseId { get; set; } = string.Empty;
+    [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
+    
+    [JsonPropertyName("is_error")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsError { get; set; }
 }
 
 public class AnthropicResponse
@@ -66,7 +116,16 @@ public class AnthropicContent
     public string Type { get; set; } = string.Empty;
 
     [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
+    public string? Text { get; set; }
+
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("input")]
+    public object? Input { get; set; }
 }
 
 public class AnthropicUsage
@@ -83,8 +142,17 @@ public class AnthropicStreamResponse
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
+    [JsonPropertyName("message")]
+    public AnthropicResponse? Message { get; set; }
+    
+    [JsonPropertyName("index")]
+    public int? Index { get; set; }
+
+    [JsonPropertyName("content_block")]
+    public AnthropicContent? ContentBlock { get; set; }
+
     [JsonPropertyName("delta")]
-    public AnthropicDelta? Delta { get; set; }
+    public JsonElement Delta { get; set; }
 
     [JsonPropertyName("usage")]
     public AnthropicUsage? Usage { get; set; }
@@ -97,4 +165,7 @@ public class AnthropicDelta
 
     [JsonPropertyName("text")]
     public string? Text { get; set; }
+    
+    [JsonPropertyName("stop_reason")]
+    public string? StopReason { get; set; }
 }

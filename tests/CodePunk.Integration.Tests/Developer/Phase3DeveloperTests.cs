@@ -93,10 +93,13 @@ public class Phase3DeveloperTests
             .Setup(m => m.GetBySessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => messages.ToList());
 
+        var mockToolService = new Mock<IToolService>();
+
         return new InteractiveChatSession(
             mockSessionService.Object,
             mockMessageService.Object,
             mockLLMService.Object,
+            mockToolService.Object,
             NullLogger<InteractiveChatSession>.Instance);
     }
 }

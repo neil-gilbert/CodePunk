@@ -39,6 +39,7 @@ public class InteractiveChatIntegrationTests : IDisposable
         services.AddSingleton<IMessageRepository, MessageRepository>();
         services.AddSingleton<ISessionService, SessionService>();
         services.AddSingleton<IMessageService, MessageService>();
+        services.AddSingleton<IToolService, ToolService>();
         services.AddSingleton(_mockLLMService.Object);
         services.AddSingleton<InteractiveChatSession>();
         services.AddLogging(builder => builder.AddConsole());
@@ -63,16 +64,15 @@ public class InteractiveChatIntegrationTests : IDisposable
             "OpenAI");
 
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<List<Message>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<Message> messages, CancellationToken ct) =>
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Returns((IList<Message> messages, CancellationToken ct) =>
             {
-                // Create response with correct session ID
-                return Message.Create(
-                    messages.First().SessionId,
-                    MessageRole.Assistant,
-                    [new TextPart(aiResponseContent)],
-                    "gpt-4",
-                    "OpenAI");
+                // Create stream response
+                var streamChunks = new List<LLMStreamChunk>
+                {
+                    new() { Content = aiResponseContent, IsComplete = true }
+                };
+                return streamChunks.ToAsyncEnumerable();
             });
 
         // Act & Assert
@@ -123,15 +123,14 @@ public class InteractiveChatIntegrationTests : IDisposable
         const string followUpResponse = "Sure! I can help with that.";
         
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<List<Message>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<Message> msgs, CancellationToken ct) =>
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Returns((IList<Message> msgs, CancellationToken ct) =>
             {
-                return Message.Create(
-                    msgs.First().SessionId,
-                    MessageRole.Assistant,
-                    [new TextPart(followUpResponse)],
-                    "gpt-4",
-                    "OpenAI");
+                var streamChunks = new List<LLMStreamChunk>
+                {
+                    new() { Content = followUpResponse, IsComplete = true }
+                };
+                return streamChunks.ToAsyncEnumerable();
             });
 
         var followUpResponseMsg = await newChatSession.SendMessageAsync(followUpMessage);
@@ -178,8 +177,8 @@ public class InteractiveChatIntegrationTests : IDisposable
 
         // Assert
         receivedChunks.Should().HaveCount(4);
-        receivedChunks.All(c => c.Model == "gpt-4o").Should().BeTrue();
-        receivedChunks.All(c => c.Provider == "OpenAI").Should().BeTrue();
+        receivedChunks.All(c => c.Model == "claude-3-5-sonnet").Should().BeTrue();
+        receivedChunks.All(c => c.Provider == "Anthropic").Should().BeTrue();
         receivedChunks.Last().IsComplete.Should().BeTrue();
 
         // Verify complete message was saved
@@ -198,15 +197,14 @@ public class InteractiveChatIntegrationTests : IDisposable
         var chatSession = _serviceProvider.GetRequiredService<InteractiveChatSession>();
 
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<List<Message>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<Message> messages, CancellationToken ct) =>
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Returns((IList<Message> messages, CancellationToken ct) =>
             {
-                return Message.Create(
-                    messages.First().SessionId,
-                    MessageRole.Assistant,
-                    [new TextPart("Response")],
-                    "gpt-4",
-                    "OpenAI");
+                var streamChunks = new List<LLMStreamChunk>
+                {
+                    new() { Content = "Response", IsComplete = true }
+                };
+                return streamChunks.ToAsyncEnumerable();
             });
 
         // Act & Assert
@@ -278,8 +276,8 @@ public class InteractiveChatIntegrationTests : IDisposable
         await chatSession.StartNewSessionAsync("Error Test");
         
         _mockLLMService
-            .Setup(l => l.SendMessageAsync(It.IsAny<List<Message>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("LLM service error"));
+            .Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Returns(() => throw new InvalidOperationException("LLM service error"));
 
         await chatSession.Invoking(cs => cs.SendMessageAsync("Hello"))
             .Should().ThrowAsync<InvalidOperationException>()

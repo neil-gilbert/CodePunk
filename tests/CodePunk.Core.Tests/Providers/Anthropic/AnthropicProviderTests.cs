@@ -293,7 +293,20 @@ public class AnthropicProviderTests
 
     private HttpClient CreateMockHttpClientForStreaming(string[] streamData)
     {
-        var streamContent = string.Join("\n", streamData) + "\n";
+        // Simulate proper SSE framing with event: ... and data: ... lines separated by blank lines
+        var sb = new System.Text.StringBuilder();
+        foreach (var line in streamData)
+        {
+            // Infer event type from the JSON 'type' field for test clarity
+            string eventName = "message";
+            if (line.Contains("\"type\":\"content_block_delta\"")) eventName = "content_block_delta";
+            else if (line.Contains("\"type\":\"message_stop\"")) eventName = "message_stop";
+
+            sb.Append("event: ").Append(eventName).Append('\n');
+            sb.Append("data: ").Append(line.Substring(line.IndexOf('{'))).Append('\n');
+            sb.Append('\n');
+        }
+        var streamContent = sb.ToString();
         
         var mockHandler = new Mock<HttpMessageHandler>();
         mockHandler.Protected()
@@ -301,10 +314,19 @@ public class AnthropicProviderTests
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
+            .ReturnsAsync(() =>
             {
-                StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(streamContent, System.Text.Encoding.UTF8, "text/plain")
+                var bytes = System.Text.Encoding.UTF8.GetBytes(streamContent);
+                var ms = new System.IO.MemoryStream(bytes);
+                var streamHttpContent = new StreamContent(ms);
+                streamHttpContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/event-stream");
+                streamHttpContent.Headers.ContentLength = bytes.Length;
+                var resp = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = streamHttpContent,
+                };
+                return resp;
             });
 
         return new HttpClient(mockHandler.Object)
