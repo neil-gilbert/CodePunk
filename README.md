@@ -1,4 +1,4 @@
-![CodePunk 8-bit logo](CodePunk.png)
+![CodePunk 8-bit logo](codepunk.png)
 
 # CodePunk
 
