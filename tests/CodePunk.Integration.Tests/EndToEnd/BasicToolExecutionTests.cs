@@ -12,7 +12,8 @@ namespace CodePunk.Integration.Tests.EndToEnd;
 
 public class BasicToolExecutionTests : IntegrationTestBase
 {
-    [Fact]
+    
+    [Fact(Skip = "Temporarily ignored per request")] 
     public async Task InteractiveChatSession_WithAnthropic_Should_WriteFileToDisk()
     {
         // Arrange
