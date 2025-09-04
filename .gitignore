@@ -417,3 +417,16 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# --- Custom additions (CodePunk) ---
+# JetBrains Rider / IntelliJ project settings
+.idea/
+
+# Local application settings (keep sample/template versions under a different name if needed)
+appsettings.json
+appsettings.*.json
+
+# Local SQLite database files
+codepunk.db*
+**/codepunk.db*
+

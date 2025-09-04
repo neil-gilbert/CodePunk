@@ -1,4 +1,7 @@
-![CodePunk 8-bit logo](codepunk.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/codepunk-dark.png">
+  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=400 />
+</picture>
 
 # CodePunk
 
