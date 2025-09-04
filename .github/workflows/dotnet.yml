@@ -25,4 +25,8 @@ jobs:
     - name: Build
       run: dotnet build --no-restore
     - name: Test
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --no-build --verbosity normal --logger trx
+    - name: Dotnet Test Reporter
+      uses: bibipkins/dotnet-test-reporter@v1.5.4
+      with:
+        test-results-file: '**/TestResults.trx'
