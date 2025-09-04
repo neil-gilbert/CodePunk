@@ -1,3 +1,5 @@
+![CodePunk 8-bit logo](CodePunk.png)
+
 # CodePunk
 
 **An agentic coding assistant that works with your existing tools and any AI provider.**
