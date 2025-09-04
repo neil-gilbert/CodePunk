@@ -29,4 +29,4 @@ jobs:
     - name: Dotnet Test Reporter
       uses: bibipkins/dotnet-test-reporter@v1.5.4
       with:
-        test-results-file: '**/TestResults.trx'
+        results-path: '**/TestResults.trx'
