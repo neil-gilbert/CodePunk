@@ -5,6 +5,7 @@ using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CodePunk.Console.Tests;
@@ -31,7 +32,7 @@ public class DependencyResolutionTests
         builder.Services.AddTransient<ChatCommand, LoadCommand>();
 
         using var host = builder.Build();
-        var loop = host.Services.GetService<InteractiveChatLoop>();
+    var loop = host.Services.GetRequiredService<InteractiveChatLoop>();
         Assert.NotNull(loop);
         var root = RootCommandFactory.Create(host.Services);
         Assert.NotNull(root);
