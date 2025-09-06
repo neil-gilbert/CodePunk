@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/CodePunk.Console/CodePunk.Console.csproj" />
     <ProjectReference Include="../../src/CodePunk.Core/CodePunk.Core.csproj" />
+  <ProjectReference Include="../../src/CodePunk.Infrastructure/CodePunk.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

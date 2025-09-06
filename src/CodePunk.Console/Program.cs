@@ -42,8 +42,8 @@ builder.Services.AddSingleton<IAuthStore, AuthFileStore>();
 builder.Services.AddSingleton<IAgentStore, AgentFileStore>();
 builder.Services.AddSingleton<ISessionFileStore, SessionFileStore>();
 
-// Chat loop orchestration (interactive console loop). Session itself is scoped by infra registration.
-builder.Services.AddSingleton<InteractiveChatLoop>();
+// Chat loop orchestration (interactive console loop). Scoped to align with InteractiveChatSession scope.
+builder.Services.AddScoped<InteractiveChatLoop>();
 // Rendering component for streaming AI responses
 builder.Services.AddSingleton<StreamingResponseRenderer>();
 
