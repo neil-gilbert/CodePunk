@@ -21,8 +21,9 @@ public class PromptProviderTests
 
         // Assert
         prompt.Should().NotBeNullOrEmpty();
-        prompt.Should().Contain("CodePunk");
-        prompt.Should().Contain("agentic coding assistant");
+    prompt.Should().Contain("CodePunk");
+    // Base prompt content
+    prompt.Should().Contain("collaborative software engineering assistant");
     }
 
     [Fact]
@@ -33,8 +34,8 @@ public class PromptProviderTests
 
         // Assert
         prompt.Should().NotBeNullOrEmpty();
-        prompt.Should().Contain("CodePunk");
-        prompt.Should().Contain("concise");
+    prompt.Should().Contain("CodePunk");
+    prompt.Should().Contain("collaborative software engineering assistant");
     }
 
     [Fact]
@@ -45,8 +46,8 @@ public class PromptProviderTests
 
         // Assert
         prompt.Should().NotBeNullOrEmpty();
-        prompt.Should().Contain("CodePunk");
-        prompt.Should().Contain("CLI agent");
+    prompt.Should().Contain("CodePunk");
+    prompt.Should().Contain("collaborative software engineering assistant");
     }
 
     [Fact]
@@ -58,6 +59,7 @@ public class PromptProviderTests
         // Assert
         prompt.Should().NotBeNullOrEmpty();
         prompt.Should().Contain("CodePunk");
+    prompt.Should().Contain("collaborative software engineering assistant");
     }
 
     [Fact]
@@ -95,12 +97,13 @@ public class PromptProviderTests
         // Assert
         prompt.Should().NotBeNullOrEmpty();
         prompt.Should().Contain("CodePunk");
+    prompt.Should().Contain("collaborative software engineering assistant");
         
         // Each provider should have distinct characteristics
         switch (providerName)
         {
             case "OpenAI":
-                prompt.Should().Contain("agentic coding assistant");
+                prompt.Should().Contain("agentic coding assistant"); // provider-specific content retained
                 break;
             case "Anthropic":
                 prompt.Should().Contain("concise");

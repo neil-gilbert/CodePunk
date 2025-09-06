@@ -1,5 +1,6 @@
 using System.Reflection;
 using CodePunk.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace CodePunk.Core.Services;
 
@@ -8,45 +9,72 @@ namespace CodePunk.Core.Services;
 /// </summary>
 public class PromptProvider : IPromptProvider
 {
-    private readonly Dictionary<string, Dictionary<PromptType, string>> _prompts;
+    private readonly Dictionary<string, Dictionary<PromptType, string>> _providerPrompts; // provider -> (type -> content)
+    private readonly Dictionary<PromptType, string> _basePrompts; // base layer
+    private readonly Dictionary<(string provider, PromptType type), string> _compositeCache; // resolved combinations
+    private readonly ILogger<PromptProvider>? _logger;
 
-    public PromptProvider()
+    public PromptProvider(ILogger<PromptProvider>? logger = null)
     {
-        _prompts = new Dictionary<string, Dictionary<PromptType, string>>(StringComparer.OrdinalIgnoreCase);
-        LoadPrompts();
+        _logger = logger;
+        _providerPrompts = new Dictionary<string, Dictionary<PromptType, string>>(StringComparer.OrdinalIgnoreCase);
+        _basePrompts = new Dictionary<PromptType, string>();
+        _compositeCache = new Dictionary<(string provider, PromptType type), string>();
+        LoadEmbeddedPrompts();
+        LoadExternalPromptDirectories();
     }
 
     public string GetSystemPrompt(string providerName, PromptType promptType = PromptType.Coder)
     {
-        // Try to get provider-specific prompt first
-        if (_prompts.TryGetValue(providerName, out var providerPrompts) &&
-            providerPrompts.TryGetValue(promptType, out var prompt))
+        var key = (providerName, promptType);
+        if (_compositeCache.TryGetValue(key, out var cached)) return cached;
+
+        string? baseLayer = _basePrompts.TryGetValue(promptType, out var bp) ? bp : null;
+        string? providerLayer = null;
+
+        if (_providerPrompts.TryGetValue(providerName, out var providerMap) && providerMap.TryGetValue(promptType, out var pl))
         {
-            return prompt;
+            providerLayer = pl;
+        }
+        else if (_providerPrompts.TryGetValue("OpenAI", out var defaultMap) && defaultMap.TryGetValue(promptType, out var dp))
+        {
+            // fallback to OpenAI provider-specific layer if target provider lacks one
+            providerLayer = dp;
         }
 
-        // Fall back to OpenAI prompts as default
-        if (_prompts.TryGetValue("OpenAI", out var defaultPrompts) &&
-            defaultPrompts.TryGetValue(promptType, out var defaultPrompt))
+        string resolved;
+        if (baseLayer != null && providerLayer != null)
         {
-            return defaultPrompt;
+            resolved = baseLayer.TrimEnd() + "\n\n" + providerLayer.Trim() + "\n";
+        }
+        else if (providerLayer != null)
+        {
+            resolved = providerLayer.TrimEnd() + "\n";
+        }
+        else if (baseLayer != null)
+        {
+            resolved = baseLayer.TrimEnd() + "\n";
+        }
+        else
+        {
+            resolved = GetBasicPrompt(promptType);
         }
 
-        // Final fallback to basic prompt
-        return GetBasicPrompt(promptType);
+        _compositeCache[key] = resolved;
+        return resolved;
     }
 
     public IEnumerable<PromptType> GetAvailablePromptTypes(string providerName)
     {
-        if (_prompts.TryGetValue(providerName, out var providerPrompts))
-        {
-            return providerPrompts.Keys;
-        }
-
-        return new[] { PromptType.Coder };
+        var set = new HashSet<PromptType>();
+        if (_basePrompts.Count > 0)
+            foreach (var t in _basePrompts.Keys) set.Add(t);
+        if (_providerPrompts.TryGetValue(providerName, out var providerMap))
+            foreach (var t in providerMap.Keys) set.Add(t);
+        if (set.Count == 0) set.Add(PromptType.Coder);
+        return set;
     }
-
-    private void LoadPrompts()
+    private void LoadEmbeddedPrompts()
     {
         var assembly = Assembly.GetExecutingAssembly();
         var resourceNames = assembly.GetManifestResourceNames()
@@ -59,31 +87,77 @@ public class PromptProvider : IPromptProvider
             {
                 using var stream = assembly.GetManifestResourceStream(resourceName);
                 if (stream == null) continue;
-
                 using var reader = new StreamReader(stream);
                 var content = reader.ReadToEnd();
-
-                // Parse resource name: CodePunk.Core.Prompts.OpenAI.Coder.md
                 var parts = resourceName.Split('.');
                 if (parts.Length >= 4)
                 {
-                    var providerName = parts[^3]; // Third from last
-                    var promptTypeName = parts[^2]; // Second from last
-
+                    var providerName = parts[^3]; // e.g., OpenAI / Anthropic / Base
+                    var promptTypeName = parts[^2];
                     if (Enum.TryParse<PromptType>(promptTypeName, true, out var promptType))
                     {
-                        if (!_prompts.ContainsKey(providerName))
+                        if (string.Equals(providerName, "Base", StringComparison.OrdinalIgnoreCase))
                         {
-                            _prompts[providerName] = new Dictionary<PromptType, string>();
+                            _basePrompts[promptType] = content;
                         }
-
-                        _prompts[providerName][promptType] = content;
+                        else
+                        {
+                            if (!_providerPrompts.ContainsKey(providerName))
+                                _providerPrompts[providerName] = new Dictionary<PromptType, string>();
+                            _providerPrompts[providerName][promptType] = content;
+                        }
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Continue loading other prompts if one fails
+                _logger?.LogWarning(ex, "Failed to load embedded prompt {Resource}", resourceName);
+            }
+        }
+    }
+
+    private void LoadExternalPromptDirectories()
+    {
+        // Phase A minimal: look for environment variable CODEPUNK_PROMPT_PATHS (':' separated) and load *.md
+        var env = Environment.GetEnvironmentVariable("CODEPUNK_PROMPT_PATHS");
+        if (string.IsNullOrWhiteSpace(env)) return;
+        var paths = env.Split(new[] { ':', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (!Directory.Exists(path)) continue;
+                foreach (var file in Directory.EnumerateFiles(path, "*.md", SearchOption.TopDirectoryOnly))
+                {
+                    try
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file); // Provider.PromptType
+                        var parts = fileName.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        if (parts.Length == 2 && Enum.TryParse<PromptType>(parts[1], true, out var pt))
+                        {
+                            var provider = parts[0];
+                            var content = File.ReadAllText(file);
+                            if (string.Equals(provider, "Base", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _basePrompts[pt] = content; // external base overrides embedded
+                            }
+                            else
+                            {
+                                if (!_providerPrompts.ContainsKey(provider))
+                                    _providerPrompts[provider] = new Dictionary<PromptType, string>();
+                                _providerPrompts[provider][pt] = content; // override
+                            }
+                        }
+                    }
+                    catch (Exception exFile)
+                    {
+                        _logger?.LogWarning(exFile, "Failed to load prompt file {File}", file);
+                    }
+                }
+            }
+            catch (Exception exDir)
+            {
+                _logger?.LogWarning(exDir, "Failed processing prompt directory {Dir}", path);
             }
         }
     }
