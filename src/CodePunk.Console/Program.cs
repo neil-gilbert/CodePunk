@@ -2,8 +2,6 @@ using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using CodePunk.Console.Stores;
-using CodePunk.Core.Abstractions;
-using CodePunk.Core.Chat;
 using CodePunk.Infrastructure.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +11,6 @@ using Spectre.Console;
 using System.CommandLine;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
-using CodePunk.Console; // Telemetry ActivitySource
 
 var builder = Host.CreateApplicationBuilder(args);
 

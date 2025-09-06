@@ -1,6 +1,3 @@
-using System;
-using System.CommandLine;
-using System.Threading.Tasks;
 using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
@@ -8,12 +5,9 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CodePunk.Console.Tests;

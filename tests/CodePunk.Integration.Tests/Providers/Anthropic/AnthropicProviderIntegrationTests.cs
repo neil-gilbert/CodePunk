@@ -12,7 +12,7 @@ namespace CodePunk.Core.Tests.Integration.Providers.Anthropic;
 public class AnthropicProviderIntegrationTests
 {
     [Fact]
-    public async Task AnthropicProvider_WithMockAPI_ShouldWork()
+    public void AnthropicProvider_WithMockAPI_ShouldWork()
     {
         // Skip if no API key configured to avoid failing in CI
         var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
@@ -36,8 +36,8 @@ public class AnthropicProviderIntegrationTests
         var logger = new LoggerFactory().CreateLogger<AnthropicProvider>();
         var provider = new AnthropicProvider(httpClient, config, logger);
 
-        // Act - Basic provider info test
-        var models = provider.Models;
+    // Act - Basic provider info test (synchronous)
+    var models = provider.Models;
 
         // Assert
         provider.Name.Should().Be("Anthropic");

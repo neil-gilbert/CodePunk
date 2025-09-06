@@ -1,4 +1,5 @@
 using CodePunk.Core.Abstractions;
+using System; // For IDisposable
 using CodePunk.Core.Services;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
@@ -9,7 +10,7 @@ using Xunit;
 
 namespace CodePunk.Core.Tests.Services;
 
-public class SessionServiceTests
+public class SessionServiceTests : IDisposable
 {
     private readonly ISessionService _sessionService;
     private readonly CodePunkDbContext _context;

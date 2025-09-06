@@ -18,7 +18,8 @@ public class SessionFileStoreTests
             await store.AppendMessageAsync(sessionId, "user", "Hello");
             await store.AppendMessageAsync(sessionId, "assistant", "Hi there");
             var record = await store.GetAsync(sessionId);
-            Assert.NotNull(record);
+            Assert.True(File.Exists(Path.Combine(tmp, "sessions", sessionId + ".json")), "Session file was not written");
+            Assert.NotNull(record); // record should deserialize
             Assert.Equal(2, record!.Messages.Count);
             var list = await store.ListAsync();
             Assert.Single(list);

@@ -7,7 +7,8 @@ namespace CodePunk.Console.Stores;
 /// </summary>
 internal static class ConfigPaths
 {
-    public static string BaseConfigDirectory { get; } = ResolveBaseConfigDir();
+    // Compute each access so tests can override via environment variable before use.
+    public static string BaseConfigDirectory => ResolveBaseConfigDir();
     public static string AuthFile => Path.Combine(BaseConfigDirectory, "auth.json");
     public static string AgentsDirectory => Path.Combine(BaseConfigDirectory, "agents");
     public static string SessionsDirectory => Path.Combine(BaseConfigDirectory, "sessions");
