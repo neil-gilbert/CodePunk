@@ -1,18 +1,17 @@
 using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.Diagnostics;
+using Spectre.Console;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq;
 using CodePunk.Console.Chat;
 using CodePunk.Console.Stores;
-using Spectre.Console;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
-using Microsoft.Extensions.DependencyInjection;
+using CodePunk.Core.Services;
 
 namespace CodePunk.Console.Commands;
 
-/// <summary>
-/// Builds the root command tree for the CodePunk CLI.
-/// Extracted from Program.cs for clarity & testability.
-/// </summary>
 internal static class RootCommandFactory
 {
     public static RootCommand Create(IServiceProvider services)
@@ -24,7 +23,6 @@ internal static class RootCommandFactory
             BuildAgent(services),
             BuildModels(services)
         };
-        // Default: launch interactive chat if invoked with no subcommand.
         root.SetHandler(async () =>
         {
             var loop = services.GetRequiredService<InteractiveChatLoop>();
@@ -124,7 +122,7 @@ internal static class RootCommandFactory
             if (string.IsNullOrWhiteSpace(key))
             {
                 System.Console.Write("Enter API key: ");
-                key = (System.Console.ReadLine() ?? string.Empty).Trim();
+                key = System.Console.ReadLine() ?? string.Empty;
             }
             await store.SetAsync(provider, key);
             System.Console.WriteLine($"Stored key for provider '{provider}'.");
@@ -157,20 +155,30 @@ internal static class RootCommandFactory
 
     private static Command BuildAgent(IServiceProvider services)
     {
-        var agent = new Command("agent", "Manage agents (named prompt + provider configs)");
+        var agent = new Command("agent", "Manage chat agents");
         var nameOpt = new Option<string>("--name") { IsRequired = true };
-        var providerOpt = new Option<string>("--provider") { IsRequired = true };
-        var modelOpt = new Option<string>("--model");
-        var promptFileOpt = new Option<string>("--prompt-file", description: "Path to custom prompt file");
-        var overwriteOpt = new Option<bool>("--overwrite", description: "Overwrite if exists");
-        var create = new Command("create", "Create a new agent") { nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt };
+        var providerOpt = new Option<string>("--provider", () => string.Empty, "Default provider");
+        var modelOpt = new Option<string>("--model", () => string.Empty, "Default model");
+        var promptFileOpt = new Option<string>("--prompt-file", () => string.Empty, "Prompt template file");
+        var overwriteOpt = new Option<bool>("--overwrite", () => false, "Overwrite existing");
+        var create = new Command("create", "Create or update an agent") { nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt };
         create.SetHandler(async (string name, string provider, string model, string promptFile, bool overwrite) =>
         {
             using var activity = Telemetry.ActivitySource.StartActivity("agent.create", ActivityKind.Client);
             activity?.SetTag("agent.name", name);
-            activity?.SetTag("agent.provider", provider);
             var store = services.GetRequiredService<IAgentStore>();
-            var def = new AgentDefinition { Name = name, Provider = provider, Model = string.IsNullOrWhiteSpace(model)? null : model, PromptFilePath = string.IsNullOrWhiteSpace(promptFile)? null : promptFile };
+            string? prompt = null;
+            if (!string.IsNullOrWhiteSpace(promptFile) && File.Exists(promptFile))
+            {
+                prompt = await File.ReadAllTextAsync(promptFile);
+            }
+            var def = new AgentDefinition
+            {
+                Name = name,
+                Provider = string.IsNullOrWhiteSpace(provider) ? string.Empty : provider,
+                Model = string.IsNullOrWhiteSpace(model) ? null : model,
+                PromptFilePath = string.IsNullOrWhiteSpace(promptFile) ? null : promptFile
+            };
             await store.CreateAsync(def, overwrite);
             System.Console.WriteLine($"Agent '{name}' created.");
         }, nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt);
@@ -210,21 +218,46 @@ internal static class RootCommandFactory
 
     private static Command BuildModels(IServiceProvider services)
     {
-        var cmd = new Command("models", "List available models (placeholder)");
-        cmd.SetHandler(async () =>
+        var jsonOpt = new Option<bool>("--json", "Output JSON");
+        var cmd = new Command("models", "List available models from configured providers") { jsonOpt };
+        cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            var auth = services.GetRequiredService<IAuthStore>();
-            var providers = await auth.ListAsync();
-            if (!providers.Any())
+            var json = ctx.ParseResult.GetValueForOption(jsonOpt);
+            var llm = services.GetRequiredService<ILLMService>();
+            var providers = llm.GetProviders();
+            var rows = new List<(string Provider,string Id,string Name,int Context,int MaxTokens,bool Tools,bool Streaming)>();
+            foreach (var p in providers.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+                foreach (var m in p.Models.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
+                    rows.Add((p.Name, m.Id, m.Name, m.ContextWindow, m.MaxTokens, m.SupportsTools, m.SupportsStreaming));
+            var writer = ctx.Console.Out;
+            if (json)
             {
-                System.Console.WriteLine("No authenticated providers. Use 'codepunk auth login --provider <name>'.");
+                var jsonOut = System.Text.Json.JsonSerializer.Serialize(rows.Select(r => new { provider = r.Provider, id = r.Id, name = r.Name, context = r.Context, maxTokens = r.MaxTokens, tools = r.Tools, streaming = r.Streaming }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                writer.Write(jsonOut + "\n");
                 return;
             }
-            foreach (var p in providers)
-                System.Console.WriteLine($"{p}/default-model");
+            if (providers.Count == 0)
+            {
+                writer.Write("No providers available. Authenticate first: codepunk auth login --provider <name> --key <APIKEY>\n");
+                return;
+            }
+            if (rows.Count == 0)
+            {
+                writer.Write("No models found.\n");
+                return;
+            }
+            writer.Write("PROVIDER\tMODEL ID\tNAME\tCTX\tMAX\tTOOLS\tSTREAM\n");
+            foreach (var r in rows)
+            {
+                writer.Write($"{r.Provider}\t{r.Id}\t{r.Name}\t{r.Context}\t{r.MaxTokens}\t{(r.Tools ? "y" : "-")}\t{(r.Streaming ? "y" : "-")}\n");
+            }
+            await Task.CompletedTask;
         });
         return cmd;
     }
+
+    // Exposed only for unit testing the models command logic without constructing full root.
+    internal static Command CreateModelsCommandForTests(IServiceProvider services) => BuildModels(services);
 
     private static string TrimTitle(string input)
     {

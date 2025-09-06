@@ -5,6 +5,9 @@ namespace CodePunk.Console.Stores;
 
 public class SessionFileStore : ISessionFileStore
 {
+    private readonly string _baseDir = ConfigPaths.BaseConfigDirectory; // capture once per instance
+    private string SessionsDir => Path.Combine(_baseDir, "sessions");
+    private string IndexFile => Path.Combine(SessionsDir, "index.json");
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -13,7 +16,7 @@ public class SessionFileStore : ISessionFileStore
 
     public async Task<string> CreateAsync(string? title, string? agent, string? model, CancellationToken ct = default)
     {
-        ConfigPaths.EnsureCreated();
+        EnsureCreated();
         var id = GenerateId();
         var meta = new SessionMetadata
         {
@@ -60,11 +63,44 @@ public class SessionFileStore : ISessionFileStore
 
     public async Task<IReadOnlyList<SessionMetadata>> ListAsync(int? take = null, CancellationToken ct = default)
     {
-        if (!File.Exists(ConfigPaths.SessionsIndexFile)) return Array.Empty<SessionMetadata>();
+        if (!File.Exists(IndexFile))
+        {
+            // Reconstruct from existing session files if index missing
+            if (!Directory.Exists(SessionsDir)) return Array.Empty<SessionMetadata>();
+            var metas = new List<SessionMetadata>();
+            foreach (var f in Directory.EnumerateFiles(SessionsDir, "*.json"))
+            {
+                if (Path.GetFileName(f).Equals("index.json", StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    await using var fsr = File.OpenRead(f);
+                    var rec = await JsonSerializer.DeserializeAsync<SessionRecord>(fsr, _jsonOptions, ct).ConfigureAwait(false);
+                    if (rec?.Metadata != null) metas.Add(rec.Metadata);
+                }
+                catch { }
+            }
+            var orderedFallback = metas.OrderByDescending(m => m.LastUpdatedUtc).ToList();
+            // Persist reconstructed index (best effort)
+            if (orderedFallback.Count > 0)
+            {
+                try
+                {
+                    var tmpIdx = IndexFile + ".tmp";
+                    await using (var fsw = File.Create(tmpIdx))
+                    {
+                        await JsonSerializer.SerializeAsync(fsw, orderedFallback, _jsonOptions, ct).ConfigureAwait(false);
+                    }
+                    File.Move(tmpIdx, IndexFile, overwrite: true);
+                }
+                catch { }
+            }
+            if (take.HasValue) orderedFallback = orderedFallback.Take(take.Value).ToList();
+            return orderedFallback;
+        }
         try
         {
-            await using var fs = File.OpenRead(ConfigPaths.SessionsIndexFile);
-            var metas = await JsonSerializer.DeserializeAsync<List<SessionMetadata>>(fs, _jsonOptions, ct).ConfigureAwait(false) 
+            await using var fs = File.OpenRead(IndexFile);
+            var metas = await JsonSerializer.DeserializeAsync<List<SessionMetadata>>(fs, _jsonOptions, ct).ConfigureAwait(false)
                         ?? new List<SessionMetadata>();
             var ordered = metas.OrderByDescending(m => m.LastUpdatedUtc).ToList();
             if (take.HasValue) ordered = ordered.Take(take.Value).ToList();
@@ -75,8 +111,10 @@ public class SessionFileStore : ISessionFileStore
 
     private async Task PersistRecordAsync(SessionRecord record, CancellationToken ct)
     {
-        ConfigPaths.EnsureCreated();
+        EnsureCreated();
         var path = GetSessionPath(record.Metadata.Id);
+        var dir = Path.GetDirectoryName(path)!;
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
         var tmp = path + ".tmp";
         await using (var fs = File.Create(tmp))
         {
@@ -87,19 +125,24 @@ public class SessionFileStore : ISessionFileStore
 
     private async Task UpdateIndexAsync(SessionMetadata meta, CancellationToken ct)
     {
-    // Ensure directories exist before writing index (tests may set temp base path)
-    ConfigPaths.EnsureCreated();
-        var list = (await ListAsync(null, ct).ConfigureAwait(false)).ToList();
+        EnsureCreated();
+        var current = await ListAsync(null, ct).ConfigureAwait(false);
+        var list = current.ToList();
         var existing = list.FindIndex(m => m.Id == meta.Id);
         if (existing >= 0) list[existing] = meta; else list.Add(meta);
-        var tmp = ConfigPaths.SessionsIndexFile + ".tmp";
+        var tmp = IndexFile + ".tmp";
         await using (var fs = File.Create(tmp))
         {
             await JsonSerializer.SerializeAsync(fs, list, _jsonOptions, ct).ConfigureAwait(false);
         }
-        File.Move(tmp, ConfigPaths.SessionsIndexFile, overwrite: true);
+        File.Move(tmp, IndexFile, overwrite: true);
     }
 
     private static string GenerateId() => DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..6];
-    private static string GetSessionPath(string id) => Path.Combine(ConfigPaths.SessionsDirectory, id + ".json");
+    private string GetSessionPath(string id) => Path.Combine(SessionsDir, id + ".json");
+    private void EnsureCreated()
+    {
+        Directory.CreateDirectory(_baseDir);
+        Directory.CreateDirectory(SessionsDir);
+    }
 }
