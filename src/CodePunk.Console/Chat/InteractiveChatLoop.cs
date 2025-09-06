@@ -35,6 +35,25 @@ public class InteractiveChatLoop
     }
 
     /// <summary>
+    /// Executes a single prompt outside full interactive loop (used by 'run' one-shot mode).
+    /// Ensures a session exists and writes the streamed response to console output directly.
+    /// </summary>
+    public async Task<string> RunSingleAsync(string message, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return string.Empty;
+        await EnsureActiveSessionAsync(cancellationToken);
+        _renderer.StartStreaming();
+        var sb = new System.Text.StringBuilder();
+        await foreach (var chunk in _chatSession.SendMessageStreamAsync(message, cancellationToken))
+        {
+            _renderer.ProcessChunk(chunk);
+            if (!string.IsNullOrEmpty(chunk.ContentDelta)) sb.Append(chunk.ContentDelta);
+        }
+        _renderer.CompleteStreaming();
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Starts the interactive chat loop
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -153,6 +172,8 @@ public class InteractiveChatLoop
     /// </summary>
     private async Task<string> GetUserInputAsync()
     {
+    // Yield once so method remains truly asynchronous (avoid analyzer warning)
+    await Task.Yield();
         _console.Write(new Rule().LeftJustified());
         _console.Markup("[bold green]👤 You[/]");
         

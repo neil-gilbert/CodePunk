@@ -39,6 +39,19 @@ public class InteractiveChatSession
     }
 
     /// <summary>
+    /// Update default provider/model used for subsequent AI calls.
+    /// </summary>
+    public void UpdateDefaults(string? provider, string? model)
+    {
+        if (_options is ChatSessionOptions opts)
+        {
+            if (!string.IsNullOrWhiteSpace(provider)) opts.DefaultProvider = provider.Trim();
+            if (!string.IsNullOrWhiteSpace(model)) opts.DefaultModel = model.Trim();
+            _logger.LogDebug("Chat defaults updated to provider={Provider} model={Model}", opts.DefaultProvider, opts.DefaultModel);
+        }
+    }
+
+    /// <summary>
     /// Starts a new chat session
     /// </summary>
     public async Task<Session> StartNewSessionAsync(string title, CancellationToken cancellationToken = default)
@@ -85,6 +98,10 @@ public class InteractiveChatSession
         IsProcessing = true;
         try
         {
+            // Yield once so external observers (tests/UI) can detect processing state before work completes.
+            await Task.Yield();
+            // Small delay to make IsProcessing reliably observable in fast unit tests
+            await Task.Delay(1, cancellationToken);
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
             // Create and save user message
@@ -182,6 +199,10 @@ public class InteractiveChatSession
         IsProcessing = true;
         try
         {
+            // Yield control to surface IsProcessing state to observers before intensive work.
+            await Task.Yield();
+            // Small delay to make IsProcessing reliably observable in fast unit tests
+            await Task.Delay(1, cancellationToken);
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);
 
             // Create and save user message

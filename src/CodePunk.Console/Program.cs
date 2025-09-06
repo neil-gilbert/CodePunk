@@ -1,83 +1,71 @@
 using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
+using CodePunk.Console.Stores;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Infrastructure.Configuration;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Spectre.Console;
+using System.CommandLine;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Resources;
+using CodePunk.Console; // Telemetry ActivitySource
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Configure Serilog
+// Serilog basic console (can refine later)
 Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
+    .WriteTo.Console()
     .CreateLogger();
 
-builder.Services.AddSerilog();
+builder.Logging.ClearProviders();
+builder.Logging.AddSerilog();
 
-// Add CodePunk services
-builder.Services.AddCodePunkServices(builder.Configuration);
-
-// Add console services
-builder.Services.AddSingleton<IAnsiConsole>(AnsiConsole.Console);
-builder.Services.AddSingleton<StreamingResponseRenderer>();
-
-// Add command services
-builder.Services.AddSingleton<HelpCommand>();
-builder.Services.AddSingleton<NewCommand>();
-builder.Services.AddSingleton<QuitCommand>();
-builder.Services.AddSingleton<ClearCommand>();
-builder.Services.AddScoped<SessionsCommand>();
-builder.Services.AddScoped<LoadCommand>();
-
-builder.Services.AddSingleton<CommandProcessor>(provider =>
+// OpenTelemetry (basic console exporter for now)
+builder.Services.AddOpenTelemetry().WithTracing(tp =>
 {
-    var commands = new List<ChatCommand>
-    {
-        provider.GetRequiredService<HelpCommand>(),
-        provider.GetRequiredService<NewCommand>(),
-        provider.GetRequiredService<QuitCommand>(),
-        provider.GetRequiredService<ClearCommand>(),
-        provider.GetRequiredService<SessionsCommand>(),
-        provider.GetRequiredService<LoadCommand>()
-    };
-    
-    // Set up help command with all commands
-    var helpCommand = commands.OfType<HelpCommand>().First();
-    var helpWithCommands = new HelpCommand(commands);
-    commands[0] = helpWithCommands;
-    
-    var logger = provider.GetRequiredService<ILogger<CommandProcessor>>();
-    return new CommandProcessor(commands, logger);
+    tp.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("CodePunk.CLI"));
+    tp.AddSource("CodePunk.CLI");
+    tp.AddConsoleExporter();
 });
 
-builder.Services.AddScoped<InteractiveChatLoop>();
+// Core + infrastructure (DbContext, repositories, services, providers, tools)
+builder.Services.AddCodePunkServices(builder.Configuration);
+
+// CLI-specific persistence stores (file based auth/agent/session index)
+builder.Services.AddSingleton<IAnsiConsole>(Spectre.Console.AnsiConsole.Console);
+builder.Services.AddSingleton<IAuthStore, AuthFileStore>();
+builder.Services.AddSingleton<IAgentStore, AgentFileStore>();
+builder.Services.AddSingleton<ISessionFileStore, SessionFileStore>();
+
+// Chat loop orchestration (interactive console loop). Session itself is scoped by infra registration.
+builder.Services.AddSingleton<InteractiveChatLoop>();
+// Rendering component for streaming AI responses
+builder.Services.AddSingleton<StreamingResponseRenderer>();
+
+// Chat command registrations
+builder.Services.AddTransient<ChatCommand, HelpCommand>();
+builder.Services.AddTransient<ChatCommand, NewCommand>();
+builder.Services.AddTransient<ChatCommand, QuitCommand>();
+builder.Services.AddTransient<ChatCommand, ClearCommand>();
+builder.Services.AddTransient<ChatCommand, SessionsCommand>();
+builder.Services.AddTransient<ChatCommand, LoadCommand>();
+builder.Services.AddSingleton<CommandProcessor>();
 
 var host = builder.Build();
-
-// Ensure database is created
 await host.Services.EnsureDatabaseCreatedAsync();
 
-// Run the interactive chat application
-try
+// Initialize HelpCommand with full command list (avoid constructor circular dependency)
+using (var scope = host.Services.CreateScope())
 {
-    var chatLoop = host.Services.GetRequiredService<InteractiveChatLoop>();
-    await chatLoop.RunAsync();
-}
-catch (OperationCanceledException)
-{
-    // Normal shutdown via Ctrl+C
-}
-catch (Exception ex)
-{
-    var console = host.Services.GetRequiredService<IAnsiConsole>();
-    console.WriteException(ex);
-    Environment.Exit(1);
+    var commands = scope.ServiceProvider.GetServices<ChatCommand>().ToList();
+    var help = commands.OfType<HelpCommand>().FirstOrDefault();
+    help?.Initialize(commands);
 }
 
-await host.StopAsync();
+var root = RootCommandFactory.Create(host.Services);
+return await root.InvokeAsync(args);

@@ -1,5 +1,6 @@
 using CodePunk.Core.Abstractions;
 using Spectre.Console;
+using System.Linq;
 
 namespace CodePunk.Console.Commands;
 
@@ -8,43 +9,48 @@ namespace CodePunk.Console.Commands;
 /// </summary>
 public class HelpCommand : ChatCommand
 {
-    private readonly IEnumerable<ChatCommand> _allCommands;
+    private IReadOnlyList<ChatCommand> _all = Array.Empty<ChatCommand>();
 
     public override string Name => "help";
     public override string Description => "Shows available commands and their usage";
     public override string[] Aliases => ["h", "?"];
 
-    public HelpCommand(IEnumerable<ChatCommand> allCommands)
+    public void Initialize(IEnumerable<ChatCommand> all)
     {
-        _allCommands = allCommands;
+        // Exclude self to avoid duplication
+        _all = all.Where(c => c != this).ToList();
     }
 
     public override Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
     {
         var console = AnsiConsole.Console;
-        
+
         console.WriteLine();
         console.Write(new Rule("[cyan]Available Commands[/]").LeftJustified());
         console.WriteLine();
 
         var table = new Table()
             .AddColumn("Command")
-            .AddColumn("Aliases") 
+            .AddColumn("Aliases")
             .AddColumn("Description")
             .BorderColor(Color.Grey);
 
-        foreach (var command in _allCommands.OrderBy(c => c.Name))
+        var commands = _all.OrderBy(c => c.Name).ToList();
+        foreach (var command in commands)
         {
             var aliases = command.Aliases.Length > 0 ? string.Join(", ", command.Aliases.Select(a => $"/{a}")) : "-";
             table.AddRow($"[cyan]/{command.Name}[/]", $"[dim]{aliases}[/]", command.Description);
         }
+
+        // Include self description at end
+        table.AddRow("[cyan]/help[/]", "[dim]/h, /?[/]", Description);
 
         console.Write(table);
         console.WriteLine();
         console.MarkupLine("[dim]Tip: Type your message directly to chat with AI, or use commands starting with /[/]");
         console.WriteLine();
 
-        return Task.FromResult(CommandResult.Ok("Available commands: help, new, quit, clear, sessions, load"));
+        return Task.FromResult(CommandResult.Ok());
     }
 }
 

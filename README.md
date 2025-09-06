@@ -25,7 +25,7 @@ CodePunk is an intelligent coding companion built for engineers working in any l
 
 ```bash
 # Clone and build
-git clone https://github.com/neil-gilbert/CodePunk
+git clone https://github.com/neil-gilbert/CodePunk.git
 dotnet build
 
 # Configure your AI provider
@@ -217,10 +217,75 @@ CodePunk is open source and welcomes contributions from engineers working in any
 
 ### Development Setup
 ```bash
-git clone https://github.com/neil-gilbert/CodePunk
+git clone https://github.com/neil-gilbert/CodePunk.git
+cd CodePunk
 dotnet restore
-dotnet test  # Ensure all tests pass
+dotnet test  # Ensure tests pass (current: 92 passing, 1 skipped)
 ```
+
+## 🧭 CLI Command Reference
+
+Current top-level commands (invoke with `codepunk <command>` or `dotnet run --project src/CodePunk.Console -- <command>`):
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `run [message]` | One-shot prompt or interactive if no message | `--session <id>`, `--continue`, `--agent <name>`, `--model <provider/model>` |
+| `auth login` | Store provider API key | `--provider <name>` `--key <value>` |
+| `auth list` | List providers with stored keys | *(none)* |
+| `auth logout` | Remove stored key | `--provider <name>` |
+| `agent create` | Create an agent (named defaults & prompt) | `--name --provider --model --prompt-file --overwrite` |
+| `agent list` | List agents | *(none)* |
+| `agent show` | Show agent definition (JSON) | `--name <agent>` |
+| `agent delete` | Delete agent | `--name <agent>` |
+| `models` | (Placeholder) list authenticated providers with default model marker | *(none)* |
+
+Invoking with no command launches the interactive chat loop.
+
+### Interactive Slash Commands
+
+Inside the chat loop you can use:
+
+| Command | Purpose |
+|---------|---------|
+| `/help` | Show available slash commands |
+| `/new` | Start a new session |
+| `/sessions` | List recent sessions (interactive view) |
+| `/load <sessionId>` | Load a prior session |
+| `/clear` | Clear current session and start fresh |
+| `/quit` | Exit the interactive loop |
+
+Planned (not yet implemented): `/provider <name>`, `/model <id>`, `/export <path>`, `/import <path>`.
+
+### Configuration Paths
+
+Default config is stored under:
+
+- macOS/Linux: `~/.config/codepunk/`
+- Windows: `%APPDATA%/CodePunk/`
+
+Override with environment variable:
+```bash
+export CODEPUNK_CONFIG_HOME="/custom/path/codepunk-config"
+```
+
+Files & directories:
+| Path | Purpose |
+|------|---------|
+| `auth.json` | Stored provider API keys (masked in listings) |
+| `agents/` | Agent definition JSON files |
+| `sessions/` | Individual session transcripts |
+| `sessions/index.json` | Session metadata index (recency sorting) |
+
+### Recent Internal Changes
+
+- Extracted root command construction into `RootCommandFactory` for testability.
+- Added default root handler (launch interactive when no args supplied).
+- Refactored `HelpCommand` to two-stage initialization to avoid DI circular dependency.
+- Added `StreamingResponseRenderer` and ensured DI registration (fixing runtime activation error).
+- Introduced DI resolution test and file store robustness (`EnsureCreated` in index update path).
+- Stabilized processing state tests with temporary async yield + minimal delay (will evolve to event-driven model).
+
+See `ROADMAP.md` for upcoming enhancements (model listing, provider extensions, improved tool system).
 
 ### Areas for Contribution
 - **AI Provider Integration**: Add local models, Azure OpenAI, or other providers

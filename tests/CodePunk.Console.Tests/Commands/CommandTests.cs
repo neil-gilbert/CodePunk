@@ -13,16 +13,17 @@ public class CommandProcessorTests
 
     public CommandProcessorTests()
     {
+        var help = new HelpCommand();
         var commands = new List<ChatCommand>
         {
-            new HelpCommand(new List<ChatCommand>()),
+            help,
             new NewCommand(),
             new QuitCommand(),
             new ClearCommand(),
             new SessionsCommand(Mock.Of<ISessionService>()),
             new LoadCommand(Mock.Of<ISessionService>())
         };
-        
+        help.Initialize(commands);
         _commandProcessor = new CommandProcessor(commands, NullLogger<CommandProcessor>.Instance);
     }
 
@@ -54,7 +55,7 @@ public class CommandProcessorTests
         // Assert
         result.Should().NotBeNull();
         result.Success.Should().BeTrue();
-        result.Message.Should().Contain("Available commands:");
+    result.Message.Should().BeNull();
     }
 
     [Fact]
@@ -123,14 +124,15 @@ public class ChatCommandTests
     public async Task HelpCommand_ShouldReturnHelpMessage()
     {
         // Arrange
-        var helpCommand = new HelpCommand(new List<ChatCommand>());
+    var helpCommand = new HelpCommand();
+    helpCommand.Initialize(new List<ChatCommand>());
 
         // Act
         var result = await helpCommand.ExecuteAsync([]);
 
         // Assert
         result.Success.Should().BeTrue();
-        result.Message.Should().Contain("Available commands:");
+    result.Message.Should().BeNull();
     }
 
     [Fact]
