@@ -25,8 +25,7 @@ CodePunk is an intelligent coding companion built for engineers working in any l
 
 ```bash
 # Clone and build
-git clone https://github.com/charmbracelet/crush
-cd crush/CodePunk.NET
+git clone https://github.com/neil-gilbert/CodePunk
 dotnet build
 
 # Configure your AI provider
@@ -218,10 +217,9 @@ CodePunk is open source and welcomes contributions from engineers working in any
 
 ### Development Setup
 ```bash
-git clone https://github.com/charmbracelet/crush
-cd crush/CodePunk.NET
+git clone https://github.com/neil-gilbert/CodePunk
 dotnet restore
-dotnet test  # Ensure all 83 tests pass
+dotnet test  # Ensure all tests pass
 ```
 
 ### Areas for Contribution
