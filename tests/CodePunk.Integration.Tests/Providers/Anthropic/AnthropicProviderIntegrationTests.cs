@@ -3,8 +3,6 @@ using CodePunk.Core.Models;
 using CodePunk.Core.Providers.Anthropic;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using Xunit;
 
 namespace CodePunk.Core.Tests.Integration.Providers.Anthropic;
 
