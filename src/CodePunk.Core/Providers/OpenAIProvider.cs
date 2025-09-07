@@ -62,7 +62,6 @@ public class OpenAIProvider : ILLMProvider
         _httpClient = httpClient;
         _config = config;
         
-        // Configure HTTP client
         if (!string.IsNullOrEmpty(_config.BaseUrl))
         {
             _httpClient.BaseAddress = new Uri(_config.BaseUrl);
@@ -73,7 +72,7 @@ public class OpenAIProvider : ILLMProvider
         }
 
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_config.ApiKey}");
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "CodePunk.NET/1.0");
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", "CodePunk/1.0");
 
         foreach (var header in _config.ExtraHeaders)
         {
@@ -144,13 +143,11 @@ public class OpenAIProvider : ILLMProvider
     {
         var messages = new List<object>();
         
-        // Add system message if provided
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
             messages.Add(new { role = "system", content = request.SystemPrompt });
         }
 
-        // Convert messages
         foreach (var message in request.Messages)
         {
             switch (message.Role)
@@ -315,7 +312,6 @@ public class OpenAIProvider : ILLMProvider
         return (inputTokens * model.CostPerInputToken) + (outputTokens * model.CostPerOutputToken);
     }
 
-    // OpenAI API DTOs
     private record OpenAIChatResponse
     {
         public string? Id { get; init; }

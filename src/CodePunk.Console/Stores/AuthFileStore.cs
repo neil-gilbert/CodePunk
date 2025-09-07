@@ -30,7 +30,6 @@ public class AuthFileStore : IAuthStore
         }
         catch
         {
-            // On corruption back up and start fresh
             try
             {
                 var backup = ConfigPaths.AuthFile + ".bak-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
@@ -85,7 +84,6 @@ public class AuthFileStore : IAuthStore
 
     private void TryRestrictPermissions(string path)
     {
-        // Best-effort: on Unix set 600. Ignore failures.
         if (!OperatingSystem.IsWindows())
         {
             try { _ = System.Diagnostics.Process.Start("chmod", $"600 \"{path}\""); } catch { }

@@ -14,7 +14,6 @@ public class SessionFileEntity
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
 
-    // Navigation properties
     public virtual SessionEntity Session { get; set; } = null!;
 }
 
@@ -30,12 +29,10 @@ public class SessionFileConfiguration : IEntityTypeConfiguration<SessionFileEnti
         builder.Property(e => e.Path).HasMaxLength(1000).IsRequired();
         builder.Property(e => e.Content).IsRequired();
         
-        // Indexes
         builder.HasIndex(e => e.SessionId);
         builder.HasIndex(e => e.Path);
         builder.HasIndex(e => new { e.Path, e.SessionId, e.Version }).IsUnique();
         
-        // Relationships
         builder.HasOne(e => e.Session)
             .WithMany(e => e.Files)
             .HasForeignKey(e => e.SessionId)

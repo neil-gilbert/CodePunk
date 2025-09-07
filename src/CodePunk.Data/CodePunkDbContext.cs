@@ -17,7 +17,6 @@ public class CodePunkDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         
-        // Apply all configurations in this assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CodePunkDbContext).Assembly);
     }
 
@@ -25,7 +24,6 @@ public class CodePunkDbContext : DbContext
     {
         base.OnConfiguring(optionsBuilder);
         
-        // Performance optimizations for SQLite
         if (optionsBuilder.Options.Extensions.Any(e => e.GetType().Name.Contains("Sqlite", StringComparison.OrdinalIgnoreCase)))
         {
             optionsBuilder.EnableServiceProviderCaching();
@@ -33,7 +31,6 @@ public class CodePunkDbContext : DbContext
         }
     }
 
-    // Optimized SaveChanges - only update timestamps on entities that actually changed
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateTimestamps();
@@ -50,7 +47,6 @@ public class CodePunkDbContext : DbContext
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         
-        // Only process entities that are actually being added or modified
         foreach (var entry in ChangeTracker.Entries().Where(e => 
             e.State == EntityState.Added || e.State == EntityState.Modified))
         {

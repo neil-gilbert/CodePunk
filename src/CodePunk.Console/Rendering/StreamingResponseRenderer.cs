@@ -65,7 +65,6 @@ public class StreamingResponseRenderer
                                 Thread.Sleep(100); // ~10fps
                             }
 
-                            // Final update
                             string finalSnapshot;
                             TimeSpan finalElapsed;
                             lock (_sync)
@@ -89,7 +88,6 @@ public class StreamingResponseRenderer
         lock (_sync)
         {
             _buffer.Append(chunk.ContentDelta);
-            // Capture usage metrics if present (usually only once at end)
             if (chunk.InputTokens.HasValue)
                 _inputTokens = chunk.InputTokens;
             if (chunk.OutputTokens.HasValue)

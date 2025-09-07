@@ -297,10 +297,8 @@ internal static class RootCommandFactory
         return cmd;
     }
 
-    // Exposed only for unit testing the models command logic without constructing full root.
     internal static Command CreateModelsCommandForTests(IServiceProvider services)
     {
-        // Lightweight version avoiding Spectre tables to make output capture in tests reliable.
         var cmd = new Command("models", "List available LLM models (test mode)");
         var jsonOpt = new Option<bool>("--json", description: "Emit JSON");
         cmd.AddOption(jsonOpt);

@@ -15,7 +15,6 @@ using OpenTelemetry.Resources;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Quiet / verbose logging control via env var CODEPUNK_VERBOSE=1 (default quiet console)
 var verbose = Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1";
 
 var loggerConfig = new LoggerConfiguration();
@@ -24,7 +23,6 @@ if (verbose)
     loggerConfig = loggerConfig.MinimumLevel.Information()
         .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
 }
-// Always write to rolling file (retain existing behavior)
 loggerConfig = loggerConfig.WriteTo.File(
     path: "logs/codepunk-.log",
     rollingInterval: RollingInterval.Day,
@@ -36,34 +34,27 @@ Log.Logger = loggerConfig.CreateLogger();
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(dispose: true);
 
-// OpenTelemetry (basic console exporter for now)
 builder.Services.AddOpenTelemetry().WithTracing(tp =>
 {
     tp.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("CodePunk.CLI"));
     tp.AddSource("CodePunk.CLI");
     if (verbose)
     {
-        // Only emit console spans when in verbose mode to keep UI clean
         tp.AddConsoleExporter();
     }
 });
 
-// Core + infrastructure (DbContext, repositories, services, providers, tools)
 builder.Services.AddCodePunkServices(builder.Configuration);
 
-// CLI-specific persistence stores (file based auth/agent/session index)
 builder.Services.AddSingleton<IAnsiConsole>(Spectre.Console.AnsiConsole.Console);
 builder.Services.AddSingleton<IAuthStore, AuthFileStore>();
 builder.Services.AddSingleton<IAgentStore, AgentFileStore>();
 builder.Services.AddSingleton<ISessionFileStore, SessionFileStore>();
 
-// Chat loop orchestration (interactive console loop). Scoped to align with InteractiveChatSession scope.
 builder.Services.AddScoped<InteractiveChatLoop>();
-// Rendering component for streaming AI responses
 builder.Services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });
 builder.Services.AddSingleton<StreamingResponseRenderer>();
 
-// Chat command registrations
 builder.Services.AddTransient<ChatCommand, HelpCommand>();
 builder.Services.AddTransient<ChatCommand, NewCommand>();
 builder.Services.AddTransient<ChatCommand, QuitCommand>();
@@ -77,14 +68,12 @@ builder.Services.AddSingleton<CommandProcessor>();
 var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();
 
-// Initialize HelpCommand with the actual instances captured by CommandProcessor (avoid duplicate transient set)
 var commandProcessor = host.Services.GetRequiredService<CommandProcessor>();
 var help = commandProcessor.GetAllCommands().OfType<HelpCommand>().FirstOrDefault();
 help?.Initialize(commandProcessor.GetAllCommands());
 
 var root = RootCommandFactory.Create(host.Services);
 
-// If no args (interactive) and not verbose logs, render a header rule once for polish
 if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") != "1")
 {
     var console = host.Services.GetRequiredService<IAnsiConsole>();

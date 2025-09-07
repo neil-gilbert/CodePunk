@@ -2,7 +2,6 @@ using System.Text;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Services;
 
-// Internal helper solely for unit tests to verify model listing logic without relying on System.CommandLine console plumbing.
 namespace CodePunk.Console.Commands;
 
 public static class ModelsIntrospection

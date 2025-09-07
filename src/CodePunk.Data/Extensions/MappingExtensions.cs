@@ -49,8 +49,6 @@ public static class MappingExtensions
         entity.CompletionTokens = session.CompletionTokens;
         entity.Cost = session.Cost;
         entity.SummaryMessageId = session.SummaryMessageId;
-        // CreatedAt should not be updated
-        // UpdatedAt will be set automatically by SaveChanges
     }
 
     public static Message ToDomainModel(this MessageEntity entity)
@@ -96,8 +94,6 @@ public static class MappingExtensions
         entity.Model = message.Model;
         entity.Provider = message.Provider;
         entity.FinishedAt = message.FinishedAt?.ToUnixTimeMilliseconds();
-        // CreatedAt should not be updated
-        // UpdatedAt will be set automatically by SaveChanges
     }
 
     public static SessionFile ToDomainModel(this SessionFileEntity entity)
@@ -133,7 +129,5 @@ public static class MappingExtensions
         entity.Path = file.Path;
         entity.Content = file.Content;
         entity.Version = file.Version;
-        // CreatedAt should not be updated
-        // UpdatedAt will be set automatically by SaveChanges
     }
 }

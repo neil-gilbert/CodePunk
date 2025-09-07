@@ -23,7 +23,6 @@ public class LLMProviderFactory : ILLMProviderFactory
 
     public ILLMProvider GetProvider(string? providerName = null)
     {
-        // Use default provider if none specified
         providerName ??= _configuration["AI:DefaultProvider"] ?? "openai";
 
         return providerName.ToLowerInvariant() switch

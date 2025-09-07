@@ -8,11 +8,9 @@ namespace CodePunk.Console.Themes;
 /// </summary>
 public static class ConsoleStyles
 {
-    // Accent / brand colors (adjust later as desired)
     public const string AccentColor = "deepskyblue1";
     public const string AccentAltColor = "blue";
 
-    // Semantic style tags
     public static string Info(string text) => $"[silver]{Escape(text)}[/]";
     public static string Dim(string text) => $"[dim]{Escape(text)}[/]";
     public static string Warn(string text) => $"[yellow]{Escape(text)}[/]";

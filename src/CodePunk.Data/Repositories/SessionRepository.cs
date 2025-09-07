@@ -22,12 +22,11 @@ public class SessionRepository : ISessionRepository
             .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (entity == null) return null;
 
-        // Live count safeguard (handles legacy DB without MessageCount or stale value)
         var liveCount = await _context.Messages
             .AsNoTracking()
             .Where(m => m.SessionId == entity.Id)
             .CountAsync(cancellationToken);
-        entity.MessageCount = liveCount; // overwrite stale value if any
+        entity.MessageCount = liveCount;
         return entity.ToDomainModel();
     }
 
@@ -41,7 +40,6 @@ public class SessionRepository : ISessionRepository
             .ToListAsync(cancellationToken);
         if (entities.Count == 0) return Array.Empty<Session>();
 
-        // Compute actual counts in one grouped query to avoid relying on stored MessageCount (which may be zero if schema drift)
         var ids = entities.Select(e => e.Id).ToList();
         var counts = await _context.Messages
             .AsNoTracking()
@@ -55,7 +53,7 @@ public class SessionRepository : ISessionRepository
             if (counts.TryGetValue(e.Id, out var c))
                 e.MessageCount = c;
             else
-                e.MessageCount = 0; // ensure deterministic zero
+                e.MessageCount = 0;
         }
 
         return entities.Select(e => e.ToDomainModel()).ToList();
@@ -71,7 +69,6 @@ public class SessionRepository : ISessionRepository
 
     public async Task<Session> UpdateAsync(Session session, CancellationToken cancellationToken = default)
     {
-        // Use tracked entity for updates (can't use AsNoTracking here)
         var entity = await _context.Sessions
             .FirstOrDefaultAsync(s => s.Id == session.Id, cancellationToken);
             

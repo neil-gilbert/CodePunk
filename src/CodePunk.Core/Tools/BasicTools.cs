@@ -240,7 +240,6 @@ public class ShellTool : ITool
 
             using var process = new System.Diagnostics.Process();
             
-            // Configure process based on OS
             if (OperatingSystem.IsWindows())
             {
                 process.StartInfo.FileName = "cmd.exe";

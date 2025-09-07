@@ -81,7 +81,6 @@ public class LLMService : ILLMService
             }
             catch
             {
-                // Skip providers that can't be created
             }
         }
         return providers;

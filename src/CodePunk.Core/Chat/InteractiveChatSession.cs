@@ -26,7 +26,6 @@ public class InteractiveChatSession
     public int ToolIteration { get; private set; }
     public bool IsToolLoopActive => ToolIteration > 0;
     public int MaxToolIterations => _options.MaxToolCallIterations;
-    // Accumulated usage for current in-memory session (mirrors SessionEntity fields)
     public long AccumulatedPromptTokens { get; private set; }
     public long AccumulatedCompletionTokens { get; private set; }
     public decimal AccumulatedCost { get; private set; }
@@ -107,13 +106,10 @@ public class InteractiveChatSession
         IsProcessing = true;
         try
         {
-            // Yield once so external observers (tests/UI) can detect processing state before work completes.
             await Task.Yield();
-            // Small delay to make IsProcessing reliably observable in fast unit tests
             await Task.Delay(1, cancellationToken);
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
-            // Create and save user message
             var userMessage = Message.Create(
                 CurrentSession.Id,
                 MessageRole.User,

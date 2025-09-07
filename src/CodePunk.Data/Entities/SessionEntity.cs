@@ -23,7 +23,6 @@ public class SessionEntity
     public long UpdatedAt { get; set; } // Unix timestamp
     public string? SummaryMessageId { get; set; }
 
-    // Navigation properties
     public virtual ICollection<MessageEntity> Messages { get; set; } = [];
     public virtual ICollection<SessionFileEntity> Files { get; set; } = [];
     public virtual SessionEntity? ParentSession { get; set; }
@@ -48,11 +47,9 @@ public class SessionConfiguration : IEntityTypeConfiguration<SessionEntity>
         
         builder.Property(e => e.Cost).HasColumnType("decimal(18,6)");
         
-        // Indexes
         builder.HasIndex(e => e.CreatedAt);
         builder.HasIndex(e => e.ParentSessionId);
         
-        // Relationships
         builder.HasOne(e => e.ParentSession)
             .WithMany(e => e.ChildSessions)
             .HasForeignKey(e => e.ParentSessionId)

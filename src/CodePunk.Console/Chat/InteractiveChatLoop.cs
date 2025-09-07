@@ -60,34 +60,29 @@ public class InteractiveChatLoop
     {
         ShowWelcome();
         
-        // Start with a new session
         await EnsureActiveSessionAsync(cancellationToken);
 
         try
         {
             while (!_shouldExit && !cancellationToken.IsCancellationRequested)
             {
-                // Handle session creation if needed
                 if (_shouldCreateNewSession)
                 {
                     await CreateNewSessionAsync(cancellationToken);
                     _shouldCreateNewSession = false;
                 }
 
-                // Get user input
                 var input = await GetUserInputAsync();
                 
                 if (string.IsNullOrWhiteSpace(input))
                     continue;
 
-                // Check if it's a command
                 if (_commandProcessor.IsCommand(input))
                 {
                     await HandleCommandAsync(input, cancellationToken);
                 }
                 else
                 {
-                    // Regular chat message
                     await HandleChatMessageAsync(input, cancellationToken);
                 }
             }
@@ -112,14 +107,14 @@ public class InteractiveChatLoop
     {
         _console.Clear();
         _console.Write(
-            new FigletText("CodePunk.NET")
+            new FigletText("CodePunk")
                 .Centered()
                 .Color(Color.Cyan1));
 
         _console.MarkupLine("[dim]AI-powered coding assistant - Interactive Chat[/]");
         _console.WriteLine();
         
-        _console.Write(new Rule("[cyan]Welcome to CodePunk.NET[/]"));
+        _console.Write(new Rule("[cyan]Welcome to CodePunk[/]"));
         _console.MarkupLine("💬 Start chatting with AI or type [cyan]/help[/] for commands");
         _console.MarkupLine("🚀 Type [cyan]/new[/] to start a new session");
         _console.MarkupLine("❌ Press [cyan]Ctrl+C[/] or type [cyan]/quit[/] to exit");
@@ -132,7 +127,7 @@ public class InteractiveChatLoop
     private void ShowGoodbye()
     {
         _console.WriteLine();
-        _console.MarkupLine("[dim]Thanks for using CodePunk.NET! 👋[/]");
+        _console.MarkupLine("[dim]Thanks for using CodePunk! 👋[/]");
     }
 
     /// <summary>
@@ -172,12 +167,10 @@ public class InteractiveChatLoop
     /// </summary>
     private async Task<string> GetUserInputAsync()
     {
-    // Yield once so method remains truly asynchronous (avoid analyzer warning)
     await Task.Yield();
         _console.Write(new Rule().LeftJustified());
         _console.Markup("[bold green]👤 You[/]");
         
-        // Show session info
         if (_chatSession.IsActive)
         {
             var sid = _chatSession.CurrentSession!.Id[..8];
@@ -189,7 +182,6 @@ public class InteractiveChatLoop
         
         _console.WriteLine();
 
-        // Multi-line input support
         var lines = new List<string>();
         var isFirstLine = true;
         
@@ -200,11 +192,10 @@ public class InteractiveChatLoop
             
             var line = System.Console.ReadLine() ?? string.Empty;
             
-            // If empty line and we have content, we're done
             if (string.IsNullOrWhiteSpace(line) && lines.Count > 0)
                 break;
                 
-            // If it's a command, process immediately
+            if (lines.Count == 0 && _commandProcessor.IsCommand(line))
             if (isFirstLine && line.StartsWith('/'))
             {
                 return line;
@@ -213,7 +204,6 @@ public class InteractiveChatLoop
             lines.Add(line);
             isFirstLine = false;
             
-            // If single line and not a command, we're done
             if (lines.Count == 1 && !string.IsNullOrWhiteSpace(line))
                 break;
         }
@@ -271,7 +261,6 @@ public class InteractiveChatLoop
             _console.WriteLine();
             _renderer.StartStreaming();
 
-            // Stream the AI response
             await foreach (var chunk in _chatSession.SendMessageStreamAsync(input, cancellationToken))
             {
                 _renderer.ProcessChunk(chunk);

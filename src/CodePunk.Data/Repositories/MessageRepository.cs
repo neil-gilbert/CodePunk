@@ -39,7 +39,6 @@ public class MessageRepository : IMessageRepository
         var entity = message.FromDomainModel();
         _context.Messages.Add(entity);
 
-        // Increment session message count (best-effort)
         var session = await _context.Sessions
             .FirstOrDefaultAsync(s => s.Id == message.SessionId, cancellationToken);
         if (session != null)
@@ -69,7 +68,6 @@ public class MessageRepository : IMessageRepository
         var entity = await _context.Messages.FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
         if (entity != null)
         {
-            // Decrement session message count if possible
             var session = await _context.Sessions.FirstOrDefaultAsync(s => s.Id == entity.SessionId, cancellationToken);
             if (session != null && session.MessageCount > 0)
             {
@@ -83,13 +81,11 @@ public class MessageRepository : IMessageRepository
 
     public async Task DeleteBySessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        // Count messages first so we can adjust session MessageCount accurately
         var messageQuery = _context.Messages.Where(m => m.SessionId == sessionId);
         var count = await messageQuery.CountAsync(cancellationToken);
 
         if (count > 0)
         {
-            // Fallback approach instead of ExecuteDeleteAsync (not available in current EF runtime)
             var toRemove = await messageQuery.ToListAsync(cancellationToken);
             if (toRemove.Count > 0)
             {
@@ -99,7 +95,7 @@ public class MessageRepository : IMessageRepository
             var session = await _context.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
             if (session != null)
             {
-                session.MessageCount = 0; // reset; live queries recompute if needed
+                session.MessageCount = 0;
             }
 
             await _context.SaveChangesAsync(cancellationToken);

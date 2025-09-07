@@ -44,9 +44,8 @@ internal static class ToolExecutionHelper
         {
             logger.LogInformation("Executing tool {ToolName} with call ID {CallId}", toolCall.Name, toolCall.Id);
             
-            // Add timeout for tool execution to prevent hanging
             using var toolTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            toolTimeoutCts.CancelAfter(TimeSpan.FromMinutes(2)); // 2 minute timeout per tool
+            toolTimeoutCts.CancelAfter(TimeSpan.FromMinutes(2));
             
             var result = await toolService.ExecuteAsync(toolCall.Name, toolCall.Arguments, toolTimeoutCts.Token)
                 .ConfigureAwait(false);
@@ -61,12 +60,10 @@ internal static class ToolExecutionHelper
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // User cancelled, re-throw
             throw;
         }
         catch (OperationCanceledException)
         {
-            // Tool timeout
             logger.LogWarning("Tool {ToolName} execution timed out", toolCall.Name);
             
             return new ToolResultPart(
@@ -122,9 +119,8 @@ internal static class ToolExecutionHelper
         {
             logger.LogInformation("Executing tool {ToolName} with call ID {CallId}", toolCall.Name, toolCall.Id);
             
-            // Add timeout for tool execution to prevent hanging
             using var toolTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            toolTimeoutCts.CancelAfter(TimeSpan.FromMinutes(2)); // 2 minute timeout per tool
+            toolTimeoutCts.CancelAfter(TimeSpan.FromMinutes(2));
             
             var result = await toolService.ExecuteAsync(toolCall.Name, toolCall.Arguments, toolTimeoutCts.Token)
                 .ConfigureAwait(false);
@@ -136,7 +132,6 @@ internal static class ToolExecutionHelper
 
             logger.LogInformation("Tool {ToolName} executed successfully", toolCall.Name);
             
-            // Tool completion status
             var statusIcon = result.IsError ? "❌" : "✅";
             var statusMessage = string.Empty;
             if (Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1")
@@ -148,12 +143,10 @@ internal static class ToolExecutionHelper
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // User cancelled, re-throw
             throw;
         }
         catch (OperationCanceledException)
         {
-            // Tool timeout
             logger.LogWarning("Tool {ToolName} execution timed out", toolCall.Name);
             
             var toolResult = new ToolResultPart(

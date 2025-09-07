@@ -19,7 +19,6 @@ public class HelpCommand : ChatCommand
 
     public void Initialize(IEnumerable<ChatCommand> all)
     {
-        // Exclude self to avoid duplication
         _all = all.Where(c => c != this).ToList();
     }
 
@@ -44,7 +43,6 @@ public class HelpCommand : ChatCommand
             table.AddRow($"[cyan]/{command.Name}[/]", $"[dim]{aliases}[/]", command.Description);
         }
 
-        // Include self description at end
         table.AddRow("[cyan]/help[/]", "[dim]/h, /?[/]", Description);
 
         console.Write(table);
@@ -148,7 +146,6 @@ public class SessionsCommand : ChatCommand
 
         foreach (var session in sessions)
         {
-            // Fallback: compute live count if zero (covers legacy rows or if repository not updating count)
             int count = session.MessageCount;
             if (count == 0)
             {
@@ -206,7 +203,6 @@ public class LoadCommand : ChatCommand
             return CommandResult.Error($"Session not found: {sessionId}");
         }
 
-        // Note: The actual session loading will be handled by the chat loop
     var shortId = session.Id.Length > 8 ? session.Id[..8] + "…" : session.Id;
     return CommandResult.Ok($"Loaded session: {ConsoleStyles.Accent(session.Title)} {ConsoleStyles.Dim("(ID: " + shortId + ")")}");
     }
@@ -244,7 +240,6 @@ public class UseCommand : ChatCommand
 
         if (args.Length == 1)
         {
-            // Single token: treat as provider OR model (heuristic: contains '-' assume model)
             if (args[0].Contains('-', StringComparison.OrdinalIgnoreCase) || args[0].StartsWith("gpt", StringComparison.OrdinalIgnoreCase))
                 model = args[0];
             else
@@ -264,7 +259,6 @@ public class UseCommand : ChatCommand
         }
         else if (args.Length >= 3)
         {
-            // Support /use provider Anthropic model claude-3
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (string.Equals(args[i], "provider", StringComparison.OrdinalIgnoreCase))
@@ -313,7 +307,6 @@ public class UsageCommand : ChatCommand
         var total = prompt + completion;
         var cost = _chatSession.AccumulatedCost;
 
-        // Build a compact table to avoid raw markup showing and improve alignment
         var table = new Table()
             .NoBorder()
             .AddColumn(new TableColumn("[grey]Metric[/]").LeftAligned())

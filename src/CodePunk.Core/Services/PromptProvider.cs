@@ -38,7 +38,6 @@ public class PromptProvider : IPromptProvider
         }
         else if (_providerPrompts.TryGetValue("OpenAI", out var defaultMap) && defaultMap.TryGetValue(promptType, out var dp))
         {
-            // fallback to OpenAI provider-specific layer if target provider lacks one
             providerLayer = dp;
         }
 
@@ -118,7 +117,6 @@ public class PromptProvider : IPromptProvider
 
     private void LoadExternalPromptDirectories()
     {
-        // Phase A minimal: look for environment variable CODEPUNK_PROMPT_PATHS (':' separated) and load *.md
         var env = Environment.GetEnvironmentVariable("CODEPUNK_PROMPT_PATHS");
         if (string.IsNullOrWhiteSpace(env)) return;
         var paths = env.Split(new[] { ':', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

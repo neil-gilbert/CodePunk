@@ -5,7 +5,6 @@ namespace CodePunk.Console.Stores;
 
 public class SessionFileStore : ISessionFileStore
 {
-    // Capture base directory at construction to avoid races if env var changes mid-test.
     private readonly string _baseDir;
     private string SessionsDir => Path.Combine(_baseDir, "sessions");
     private string IndexFile => Path.Combine(SessionsDir, "index.json");
@@ -60,7 +59,6 @@ public class SessionFileStore : ISessionFileStore
         if (string.IsNullOrWhiteSpace(sessionId)) return null;
         var path = GetSessionPath(sessionId);
         if (!File.Exists(path)) return null;
-        // Try a couple times in case of rare transient read while file is being moved
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
@@ -81,7 +79,6 @@ public class SessionFileStore : ISessionFileStore
     {
         if (!File.Exists(IndexFile))
         {
-            // Reconstruct from existing session files if index missing
             if (!Directory.Exists(SessionsDir)) return Array.Empty<SessionMetadata>();
             var metas = new List<SessionMetadata>();
             foreach (var f in Directory.EnumerateFiles(SessionsDir, "*.json"))
@@ -100,7 +97,6 @@ public class SessionFileStore : ISessionFileStore
                 catch { }
             }
             var orderedFallback = metas.OrderByDescending(m => m.LastUpdatedUtc).ToList();
-            // Persist reconstructed index (best effort)
             if (orderedFallback.Count > 0)
             {
                 try
@@ -152,7 +148,6 @@ public class SessionFileStore : ISessionFileStore
         var existing = list.FindIndex(m => m.Id == meta.Id);
         if (existing >= 0)
         {
-            // Preserve existing MessageCount if new meta has zero but existing had value (defensive)
             if (meta.MessageCount == 0 && list[existing].MessageCount > 0)
                 meta.MessageCount = list[existing].MessageCount;
             list[existing] = meta;

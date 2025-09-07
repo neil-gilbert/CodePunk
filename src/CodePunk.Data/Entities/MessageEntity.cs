@@ -19,7 +19,6 @@ public class MessageEntity
     public long UpdatedAt { get; set; }
     public long? FinishedAt { get; set; }
 
-    // Navigation properties
     public virtual SessionEntity Session { get; set; } = null!;
 }
 
@@ -37,11 +36,9 @@ public class MessageConfiguration : IEntityTypeConfiguration<MessageEntity>
         builder.Property(e => e.Model).HasMaxLength(100);
         builder.Property(e => e.Provider).HasMaxLength(50);
         
-        // Indexes
         builder.HasIndex(e => e.SessionId);
         builder.HasIndex(e => e.CreatedAt);
         
-        // Relationships
         builder.HasOne(e => e.Session)
             .WithMany(e => e.Messages)
             .HasForeignKey(e => e.SessionId)
