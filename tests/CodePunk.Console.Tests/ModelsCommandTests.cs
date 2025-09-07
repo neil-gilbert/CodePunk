@@ -18,7 +18,7 @@ namespace CodePunk.Console.Tests;
 
 public class ModelsCommandTests
 {
-    [Fact(Skip="Temporarily skipped pending stable capture approach for models output")] 
+    [Fact]
     public void Models_no_providers_outputs_guidance()
     {
     var llm = new EmptyLLMService();
@@ -26,7 +26,7 @@ public class ModelsCommandTests
     Assert.Contains("No providers", text);
     }
 
-    [Fact(Skip="Temporarily skipped pending stable capture approach for models output")] 
+    [Fact]
     public void Models_with_providers_table_output()
     {
     var llm = new SampleLLMService();
@@ -36,7 +36,7 @@ public class ModelsCommandTests
         Assert.DoesNotContain("{\"provider\"", outText); // not JSON
     }
 
-    [Fact(Skip="Temporarily skipped pending stable capture approach for models output")] 
+    [Fact]
     public void Models_with_providers_json_output()
     {
     var llm = new SampleLLMService();
@@ -58,11 +58,18 @@ public class ModelsCommandTests
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => AsyncEmpty();
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => AsyncEmpty();
-        public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, [new TextPart("ok")]));
+    public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, new List<MessagePart> { new TextPart("ok") }));
         public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => AsyncEmpty();
         private IAsyncEnumerable<LLMStreamChunk> AsyncEmpty() => Empty();
         private async IAsyncEnumerable<LLMStreamChunk> Empty() { await Task.CompletedTask; yield break; }
-    private class Provider : ILLMProvider { public string Name => "empty"; public IReadOnlyList<LLMModel> Models => Array.Empty<LLMModel>(); public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty }); public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty(); private async IAsyncEnumerable<LLMStreamChunk> Empty(){ await Task.CompletedTask; yield break; } }
+    private class Provider : ILLMProvider {
+        public string Name => "empty";
+        public IReadOnlyList<LLMModel> Models => Array.Empty<LLMModel>();
+        public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
+        public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty();
+        private async IAsyncEnumerable<LLMStreamChunk> Empty(){ await Task.CompletedTask; yield break; }
+        public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Models);
+    }
     }
     private class SampleLLMService : ILLMService
     {
@@ -74,10 +81,15 @@ public class ModelsCommandTests
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty();
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => Empty();
-        public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, [new TextPart("ok")]));
+    public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, new List<MessagePart>{ new TextPart("ok") }));
         public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Empty();
         private async IAsyncEnumerable<LLMStreamChunk> Empty() { await Task.CompletedTask; yield break; }
-    private record Provider(string Name, IReadOnlyList<LLMModel> Models) : ILLMProvider { public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty }); public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty(); private async IAsyncEnumerable<LLMStreamChunk> Empty(){ await Task.CompletedTask; yield break; } }
+    private record Provider(string Name, IReadOnlyList<LLMModel> Models) : ILLMProvider {
+        public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
+        public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty();
+        private async IAsyncEnumerable<LLMStreamChunk> Empty(){ await Task.CompletedTask; yield break; }
+        public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Models);
+    }
     }
     private class StubSessionService : ISessionService { public Task<Session?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult<Session?>(null); public Task<IReadOnlyList<Session>> GetRecentAsync(int count = 50, CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<Session>)Array.Empty<Session>()); public Task<Session> CreateAsync(string title, string? parentSessionId = null, CancellationToken cancellationToken = default) => Task.FromResult(Session.Create(title)); public Task<Session> UpdateAsync(Session session, CancellationToken cancellationToken = default) => Task.FromResult(session); public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask; }
     private class StubMessageService : IMessageService { public Task<Message?> GetByIdAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult<Message?>(null); public Task<IReadOnlyList<Message>> GetBySessionAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<Message>)Array.Empty<Message>()); public Task<Message> CreateAsync(Message message, CancellationToken cancellationToken = default) => Task.FromResult(message); public Task<Message> UpdateAsync(Message message, CancellationToken cancellationToken = default) => Task.FromResult(message); public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask; public Task DeleteBySessionAsync(string sessionId, CancellationToken cancellationToken = default) => Task.CompletedTask; }

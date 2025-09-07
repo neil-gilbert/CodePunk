@@ -59,8 +59,8 @@ dotnet run --project src/CodePunk.Console
 CodePunk works with multiple AI providers through a unified interface:
 
 ### Supported Providers
-- **OpenAI**: GPT-4o, GPT-4o-mini, GPT-3.5-turbo
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku
+- **OpenAI**: GPT-4.1, GPT-4.1-mini, GPT-4o, GPT-4o-mini, GPT-3.5-turbo (legacy)
+- **Anthropic**: Claude Opus 4.1, Claude Opus 4, Claude Sonnet 4, Claude Sonnet 3.7, Claude Haiku 3.5
 - **Local Models**: Ollama, LM Studio integration *(coming soon)*
 - **Azure OpenAI**: Enterprise deployments *(coming soon)*
 

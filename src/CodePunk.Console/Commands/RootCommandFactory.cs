@@ -249,8 +249,18 @@ internal static class RootCommandFactory
                 var providers = llm.GetProviders() ?? Array.Empty<ILLMProvider>();
                 var rows = new List<(string Provider,string Id,string Name,int Context,int MaxTokens,bool Tools,bool Streaming)>();
                 foreach (var p in providers.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
-                    foreach (var m in p.Models.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
+                {
+                    IReadOnlyList<CodePunk.Core.Abstractions.LLMModel> remote = Array.Empty<CodePunk.Core.Abstractions.LLMModel>();
+                    try
+                    {
+                        remote = await (p.FetchModelsAsync());
+                    }
+                    catch { }
+
+                    var models = (remote != null && remote.Count > 0) ? remote : p.Models;
+                    foreach (var m in models.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
                         rows.Add((p.Name, m.Id, m.Name, m.ContextWindow, m.MaxTokens, m.SupportsTools, m.SupportsStreaming));
+                }
                 var writer = ctx.Console.Out;
                 if (json)
                 {

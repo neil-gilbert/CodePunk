@@ -19,6 +19,11 @@ public interface ILLMProvider
     IReadOnlyList<LLMModel> Models { get; }
 
     /// <summary>
+    /// Optionally fetch live model list from the provider. Implementations may return an empty list or throw on error.
+    /// </summary>
+    Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Send a non-streaming request to the LLM
     /// </summary>
     Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default);

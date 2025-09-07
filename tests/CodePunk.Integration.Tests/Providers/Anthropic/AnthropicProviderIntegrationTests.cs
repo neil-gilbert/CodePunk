@@ -25,7 +25,7 @@ public class AnthropicProviderIntegrationTests
         {
             ApiKey = apiKey,
             BaseUrl = "https://api.anthropic.com/v1", // This would fail without real API key
-            DefaultModel = AnthropicModels.Claude35Sonnet,
+            DefaultModel = AnthropicModels.ClaudeOpus41,
             MaxTokens = 100,
             Temperature = 0.7
         };
@@ -40,14 +40,17 @@ public class AnthropicProviderIntegrationTests
         // Assert
         provider.Name.Should().Be("Anthropic");
         models.Should().NotBeEmpty();
-        models.Should().Contain(m => m.Id == AnthropicModels.Claude35Sonnet);
-        models.Should().Contain(m => m.Id == AnthropicModels.Claude35Haiku);
-        
-        var claude35 = models.First(m => m.Id == AnthropicModels.Claude35Sonnet);
-        claude35.Name.Should().Be("Claude 3.5 Sonnet");
-        claude35.MaxTokens.Should().Be(200000);
-        claude35.SupportsStreaming.Should().BeTrue();
-        claude35.SupportsTools.Should().BeTrue();
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeOpus41);
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeOpus4);
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeSonnet4);
+    models.Should().Contain(m => m.Id == AnthropicModels.Claude37Sonnet);
+    models.Should().Contain(m => m.Id == AnthropicModels.Claude35Haiku);
+
+    var opus41 = models.First(m => m.Id == AnthropicModels.ClaudeOpus41);
+    opus41.Name.Should().Be("Claude Opus 4.1");
+    opus41.MaxTokens.Should().Be(200000);
+    opus41.SupportsStreaming.Should().BeTrue();
+    opus41.SupportsTools.Should().BeTrue();
     }
 
     [Fact]
@@ -65,7 +68,7 @@ public class AnthropicProviderIntegrationTests
         {
             ApiKey = apiKey,
             BaseUrl = "https://api.anthropic.com/v1",
-            DefaultModel = AnthropicModels.Claude35Sonnet,
+            DefaultModel = AnthropicModels.ClaudeOpus41,
             MaxTokens = 50,
             Temperature = 0.7
         };
@@ -76,7 +79,7 @@ public class AnthropicProviderIntegrationTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("test-session", MessageRole.User, new[] { new TextPart("Say 'Hello, world!' in exactly that format.") })
@@ -114,7 +117,7 @@ public class AnthropicProviderIntegrationTests
         {
             ApiKey = apiKey,
             BaseUrl = "https://api.anthropic.com/v1",
-            DefaultModel = AnthropicModels.Claude35Sonnet,
+            DefaultModel = AnthropicModels.ClaudeOpus41,
             MaxTokens = 30,
             Temperature = 0.7
         };
@@ -125,7 +128,7 @@ public class AnthropicProviderIntegrationTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("test-session", MessageRole.User, new[] { new TextPart("Count from 1 to 5") })

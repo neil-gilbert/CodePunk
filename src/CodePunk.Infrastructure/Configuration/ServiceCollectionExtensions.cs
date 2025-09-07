@@ -113,7 +113,7 @@ public static class ServiceCollectionExtensions
             {
                 ApiKey = anthropicApiKey,
                 BaseUrl = configuration["AI:Providers:Anthropic:BaseUrl"] ?? "https://api.anthropic.com/v1",
-                DefaultModel = configuration["AI:Providers:Anthropic:DefaultModel"] ?? AnthropicModels.Claude35Sonnet,
+                DefaultModel = configuration["AI:Providers:Anthropic:DefaultModel"] ?? AnthropicModels.ClaudeOpus41,
                 MaxTokens = configuration.GetValue("AI:Providers:Anthropic:MaxTokens", 4096),
                 Temperature = configuration.GetValue("AI:Providers:Anthropic:Temperature", 0.7),
                 Version = configuration["AI:Providers:Anthropic:Version"] ?? "2023-06-01"

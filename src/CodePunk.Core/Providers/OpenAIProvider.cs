@@ -21,9 +21,33 @@ public class OpenAIProvider : ILLMProvider
     {
         new LLMModel
         {
+            Id = "gpt-4.1",
+            Name = "GPT-4.1",
+            Description = "Latest flagship GPT-4 generation model",
+            MaxTokens = 4096,
+            ContextWindow = 128000,
+            CostPerInputToken = 0m,
+            CostPerOutputToken = 0m,
+            SupportsTools = true,
+            SupportsStreaming = true
+        },
+        new LLMModel
+        {
+            Id = "gpt-4.1-mini",
+            Name = "GPT-4.1 Mini",
+            Description = "Smaller, efficient 4.1 family model",
+            MaxTokens = 4096,
+            ContextWindow = 128000,
+            CostPerInputToken = 0m,
+            CostPerOutputToken = 0m,
+            SupportsTools = true,
+            SupportsStreaming = true
+        },
+        new LLMModel
+        {
             Id = "gpt-4o",
             Name = "GPT-4o",
-            Description = "Most capable GPT-4 model",
+            Description = "Multimodal GPT-4o model",
             MaxTokens = 4096,
             ContextWindow = 128000,
             CostPerInputToken = 0.005m / 1000,
@@ -35,7 +59,7 @@ public class OpenAIProvider : ILLMProvider
         {
             Id = "gpt-4o-mini",
             Name = "GPT-4o Mini",
-            Description = "Faster, cheaper GPT-4 model",
+            Description = "Fast, low-cost GPT-4o variant",
             MaxTokens = 4096,
             ContextWindow = 128000,
             CostPerInputToken = 0.00015m / 1000,
@@ -46,8 +70,8 @@ public class OpenAIProvider : ILLMProvider
         new LLMModel
         {
             Id = "gpt-3.5-turbo",
-            Name = "GPT-3.5 Turbo",
-            Description = "Legacy GPT-3.5 model",
+            Name = "GPT-3.5 Turbo (Legacy)",
+            Description = "Legacy model (kept for backwards compatibility)",
             MaxTokens = 4096,
             ContextWindow = 16385,
             CostPerInputToken = 0.0015m / 1000,
@@ -84,6 +108,37 @@ public class OpenAIProvider : ILLMProvider
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+    }
+
+    /// <summary>
+    /// Attempt to fetch available models from the OpenAI service. Falls back to an empty list on error.
+    /// </summary>
+    public async Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var resp = await _httpClient.GetFromJsonAsync<OpenAIModelList>("models", _jsonOptions, cancellationToken);
+            if (resp?.Data == null) return Array.Empty<LLMModel>();
+
+            var list = resp.Data.Select(d => new LLMModel
+            {
+                Id = d.Id,
+                Name = d.Id,
+                Description = d.Purpose ?? string.Empty,
+                MaxTokens = 4096,
+                ContextWindow = 4096,
+                CostPerInputToken = 0m,
+                CostPerOutputToken = 0m,
+                SupportsTools = true,
+                SupportsStreaming = true
+            }).ToList();
+
+            return list;
+        }
+        catch
+        {
+            return Array.Empty<LLMModel>();
+        }
     }
 
     public async Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default)
@@ -323,6 +378,17 @@ public class OpenAIProvider : ILLMProvider
     {
         public string? Id { get; init; }
         public OpenAIChatChoice[]? Choices { get; init; }
+    }
+
+    private record OpenAIModelList
+    {
+        public OpenAIModel[]? Data { get; init; }
+    }
+
+    private record OpenAIModel
+    {
+        public string Id { get; init; } = string.Empty;
+        public string? Purpose { get; init; }
     }
 
     private record OpenAIChatChoice

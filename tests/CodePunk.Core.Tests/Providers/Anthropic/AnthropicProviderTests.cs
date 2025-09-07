@@ -23,7 +23,7 @@ public class AnthropicProviderTests
         {
             ApiKey = "test-api-key",
             BaseUrl = "https://api.anthropic.com/v1",
-            DefaultModel = AnthropicModels.Claude35Sonnet,
+            DefaultModel = AnthropicModels.ClaudeOpus41,
             MaxTokens = 4096,
             Temperature = 0.7,
             Version = "2023-06-01"
@@ -53,15 +53,17 @@ public class AnthropicProviderTests
 
         // Assert
         models.Should().NotBeEmpty();
-        models.Should().Contain(m => m.Id == AnthropicModels.Claude35Sonnet);
-        models.Should().Contain(m => m.Id == AnthropicModels.Claude35Haiku);
-        models.Should().Contain(m => m.Id == AnthropicModels.Claude3Opus);
-        
-        var claude35Sonnet = models.First(m => m.Id == AnthropicModels.Claude35Sonnet);
-        claude35Sonnet.Name.Should().Be("Claude 3.5 Sonnet");
-        claude35Sonnet.MaxTokens.Should().Be(200000);
-        claude35Sonnet.SupportsStreaming.Should().BeTrue();
-        claude35Sonnet.SupportsTools.Should().BeTrue();
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeOpus41);
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeOpus4);
+    models.Should().Contain(m => m.Id == AnthropicModels.ClaudeSonnet4);
+    models.Should().Contain(m => m.Id == AnthropicModels.Claude37Sonnet);
+    models.Should().Contain(m => m.Id == AnthropicModels.Claude35Haiku);
+
+    var opus41 = models.First(m => m.Id == AnthropicModels.ClaudeOpus41);
+    opus41.Name.Should().Be("Claude Opus 4.1");
+    opus41.MaxTokens.Should().Be(200000);
+    opus41.SupportsStreaming.Should().BeTrue();
+    opus41.SupportsTools.Should().BeTrue();
     }
 
     [Fact]
@@ -77,7 +79,7 @@ public class AnthropicProviderTests
             {
                 new() { Type = "text", Text = "Hello, world!" }
             },
-            Model = AnthropicModels.Claude35Sonnet,
+            Model = AnthropicModels.ClaudeOpus41,
             StopReason = "end_turn",
             Usage = new AnthropicUsage
             {
@@ -91,7 +93,7 @@ public class AnthropicProviderTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("session-1", MessageRole.User, new[] { new TextPart("Hello") })
@@ -121,7 +123,7 @@ public class AnthropicProviderTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("session-1", MessageRole.User, new[] { new TextPart("Hello") })
@@ -150,7 +152,7 @@ public class AnthropicProviderTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("session-1", MessageRole.User, new[] { new TextPart("Hello") })
@@ -190,7 +192,7 @@ public class AnthropicProviderTests
             {
                 new() { Type = "text", Text = "Test response" }
             },
-            Model = AnthropicModels.Claude35Sonnet,
+            Model = AnthropicModels.ClaudeOpus41,
             StopReason = anthropicReason
         };
 
@@ -199,7 +201,7 @@ public class AnthropicProviderTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("session-1", MessageRole.User, new[] { new TextPart("Test") })
@@ -228,7 +230,7 @@ public class AnthropicProviderTests
 
         var request = new LLMRequest
         {
-            ModelId = AnthropicModels.Claude35Sonnet,
+            ModelId = AnthropicModels.ClaudeOpus41,
             Messages = new[]
             {
                 Message.Create("session-1", MessageRole.System, new[] { new TextPart("You are a helpful assistant") }),

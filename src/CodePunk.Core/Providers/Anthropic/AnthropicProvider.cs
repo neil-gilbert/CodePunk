@@ -35,6 +35,15 @@ public class AnthropicProvider : ILLMProvider
         Models = CreateModels();
     }
 
+    /// <summary>
+    /// Attempt to fetch live models from Anthropic. Currently returns empty list as a fallback.
+    /// </summary>
+    public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default)
+    {
+        // Anthropic model listing not implemented yet. Fall back to static Models if needed by caller.
+        return Task.FromResult(Models ?? Array.Empty<LLMModel>());
+    }
+
     public async Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -537,11 +546,11 @@ public class AnthropicProvider : ILLMProvider
     {
         return modelId switch
         {
-            AnthropicModels.Claude35Sonnet => "Claude 3.5 Sonnet",
-            AnthropicModels.Claude35Haiku => "Claude 3.5 Haiku",
-            AnthropicModels.Claude3Opus => "Claude 3 Opus",
-            AnthropicModels.Claude3Sonnet => "Claude 3 Sonnet",
-            AnthropicModels.Claude3Haiku => "Claude 3 Haiku",
+            AnthropicModels.ClaudeOpus41 => "Claude Opus 4.1",
+            AnthropicModels.ClaudeOpus4 => "Claude Opus 4",
+            AnthropicModels.ClaudeSonnet4 => "Claude Sonnet 4",
+            AnthropicModels.Claude37Sonnet => "Claude Sonnet 3.7",
+            AnthropicModels.Claude35Haiku => "Claude Haiku 3.5",
             _ => modelId
         };
     }
@@ -551,11 +560,11 @@ public class AnthropicProvider : ILLMProvider
         // Costs per 1M tokens as of August 2024
         return modelId switch
         {
-            AnthropicModels.Claude35Sonnet => 3.00m,
-            AnthropicModels.Claude35Haiku => 0.25m,
-            AnthropicModels.Claude3Opus => 15.00m,
-            AnthropicModels.Claude3Sonnet => 3.00m,
-            AnthropicModels.Claude3Haiku => 0.25m,
+            AnthropicModels.ClaudeOpus41 => 15.00m,
+            AnthropicModels.ClaudeOpus4 => 15.00m,
+            AnthropicModels.ClaudeSonnet4 => 3.00m,
+            AnthropicModels.Claude37Sonnet => 3.00m,
+            AnthropicModels.Claude35Haiku => 0.80m,
             _ => 0m
         };
     }
@@ -565,11 +574,11 @@ public class AnthropicProvider : ILLMProvider
         // Costs per 1M tokens as of August 2024
         return modelId switch
         {
-            AnthropicModels.Claude35Sonnet => 15.00m,
-            AnthropicModels.Claude35Haiku => 1.25m,
-            AnthropicModels.Claude3Opus => 75.00m,
-            AnthropicModels.Claude3Sonnet => 15.00m,
-            AnthropicModels.Claude3Haiku => 1.25m,
+            AnthropicModels.ClaudeOpus41 => 18.75m,
+            AnthropicModels.ClaudeOpus4 => 18.75m,
+            AnthropicModels.ClaudeSonnet4 => 3.75m,
+            AnthropicModels.Claude37Sonnet => 3.75m,
+            AnthropicModels.Claude35Haiku => 1.00m,
             _ => 0m
         };
     }

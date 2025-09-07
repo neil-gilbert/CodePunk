@@ -63,6 +63,7 @@ builder.Services.AddTransient<ChatCommand, SessionsCommand>();
 builder.Services.AddTransient<ChatCommand, LoadCommand>();
 builder.Services.AddTransient<ChatCommand, UseCommand>();
 builder.Services.AddTransient<ChatCommand, UsageCommand>();
+builder.Services.AddTransient<ChatCommand, ModelsChatCommand>();
 builder.Services.AddSingleton<CommandProcessor>();
 
 var host = builder.Build();

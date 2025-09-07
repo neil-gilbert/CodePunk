@@ -101,6 +101,7 @@ internal class StubLLMService : ILLMService
         public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = "stub" }); 
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Stream(); 
     private async IAsyncEnumerable<LLMStreamChunk> Stream(){ await Task.CompletedTask; yield break; }
+    public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Models);
     }
 }
 internal class StubToolService : IToolService
