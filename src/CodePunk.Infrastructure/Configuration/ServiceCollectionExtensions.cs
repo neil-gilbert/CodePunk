@@ -81,9 +81,10 @@ public static class ServiceCollectionExtensions
                           configuration["OpenAI:ApiKey"] ?? // Backward compatibility
                           Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "";
 
-        if (!string.IsNullOrEmpty(openAIApiKey))
-        {
-            services.AddHttpClient<OpenAIProvider>();
+            if (!string.IsNullOrEmpty(openAIApiKey))
+            {
+                services.AddHttpClient<OpenAIProvider>()
+                    .AddStandardResilienceHandler(); // Retry, timeout, circuit breaker
             services.AddTransient<OpenAIProvider>(provider =>
             {
                 var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
@@ -106,8 +107,8 @@ public static class ServiceCollectionExtensions
         var anthropicApiKey = configuration["AI:Providers:Anthropic:ApiKey"] ?? 
                              Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? "";
 
-        if (!string.IsNullOrEmpty(anthropicApiKey))
-        {
+            if (!string.IsNullOrEmpty(anthropicApiKey))
+            {
             var anthropicConfig = new AnthropicConfiguration
             {
                 ApiKey = anthropicApiKey,
@@ -119,7 +120,8 @@ public static class ServiceCollectionExtensions
             };
 
             services.AddSingleton(anthropicConfig);
-            services.AddHttpClient<AnthropicProvider>();
+                services.AddHttpClient<AnthropicProvider>()
+                    .AddStandardResilienceHandler();
             services.AddTransient<AnthropicProvider>(provider =>
             {
                 var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();

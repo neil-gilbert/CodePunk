@@ -5,6 +5,8 @@ namespace CodePunk.Console.Stores;
 
 public class AgentFileStore : IAgentStore
 {
+    private readonly string _baseDir = ConfigPaths.BaseConfigDirectory; // capture once
+    private string AgentsDir => Path.Combine(_baseDir, "agents");
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -15,11 +17,11 @@ public class AgentFileStore : IAgentStore
     {
         ArgumentNullException.ThrowIfNull(definition);
         if (string.IsNullOrWhiteSpace(definition.Name)) throw new ArgumentException("Agent name required", nameof(definition));
-        ConfigPaths.EnsureCreated();
-        var path = GetPath(definition.Name);
+    EnsureCreated();
+    var path = GetPath(definition.Name);
         if (File.Exists(path) && !overwrite)
             throw new InvalidOperationException($"Agent '{definition.Name}' already exists. Use overwrite flag to replace.");
-        Directory.CreateDirectory(ConfigPaths.AgentsDirectory);
+    Directory.CreateDirectory(AgentsDir);
         var tmp = path + ".tmp";
         await using (var fs = File.Create(tmp))
         {
@@ -39,9 +41,9 @@ public class AgentFileStore : IAgentStore
 
     public async Task<IEnumerable<AgentDefinition>> ListAsync(CancellationToken ct = default)
     {
-        if (!Directory.Exists(ConfigPaths.AgentsDirectory)) return Array.Empty<AgentDefinition>();
+    if (!Directory.Exists(AgentsDir)) return Array.Empty<AgentDefinition>();
         var list = new List<AgentDefinition>();
-        foreach (var file in Directory.EnumerateFiles(ConfigPaths.AgentsDirectory, "*.json"))
+    foreach (var file in Directory.EnumerateFiles(AgentsDir, "*.json"))
         {
             try
             {
@@ -65,11 +67,16 @@ public class AgentFileStore : IAgentStore
         return Task.CompletedTask;
     }
 
-    private static string GetPath(string name) => Path.Combine(ConfigPaths.AgentsDirectory, Sanitize(name) + ".json");
+    private string GetPath(string name) => Path.Combine(AgentsDir, Sanitize(name) + ".json");
     private static string Sanitize(string name)
     {
         foreach (var c in Path.GetInvalidFileNameChars())
             name = name.Replace(c, '_');
         return name.Trim();
+    }
+    private void EnsureCreated()
+    {
+        Directory.CreateDirectory(_baseDir);
+        Directory.CreateDirectory(AgentsDir);
     }
 }
