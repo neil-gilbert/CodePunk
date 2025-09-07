@@ -20,7 +20,15 @@ public class SessionRepository : ISessionRepository
         var entity = await _context.Sessions
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
-        return entity?.ToDomainModel();
+        if (entity == null) return null;
+
+        // Live count safeguard (handles legacy DB without MessageCount or stale value)
+        var liveCount = await _context.Messages
+            .AsNoTracking()
+            .Where(m => m.SessionId == entity.Id)
+            .CountAsync(cancellationToken);
+        entity.MessageCount = liveCount; // overwrite stale value if any
+        return entity.ToDomainModel();
     }
 
     public async Task<IReadOnlyList<Session>> GetRecentAsync(int count = 50, CancellationToken cancellationToken = default)
@@ -31,6 +39,24 @@ public class SessionRepository : ISessionRepository
             .OrderByDescending(s => s.UpdatedAt)
             .Take(count)
             .ToListAsync(cancellationToken);
+        if (entities.Count == 0) return Array.Empty<Session>();
+
+        // Compute actual counts in one grouped query to avoid relying on stored MessageCount (which may be zero if schema drift)
+        var ids = entities.Select(e => e.Id).ToList();
+        var counts = await _context.Messages
+            .AsNoTracking()
+            .Where(m => ids.Contains(m.SessionId))
+            .GroupBy(m => m.SessionId)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Id, x => x.Count, cancellationToken);
+
+        foreach (var e in entities)
+        {
+            if (counts.TryGetValue(e.Id, out var c))
+                e.MessageCount = c;
+            else
+                e.MessageCount = 0; // ensure deterministic zero
+        }
 
         return entities.Select(e => e.ToDomainModel()).ToList();
     }

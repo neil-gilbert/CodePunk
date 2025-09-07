@@ -5,7 +5,8 @@ namespace CodePunk.Console.Stores;
 
 public class SessionFileStore : ISessionFileStore
 {
-    private readonly string _baseDir = ConfigPaths.BaseConfigDirectory; // capture once per instance
+    // Capture base directory at construction to avoid races if env var changes mid-test.
+    private readonly string _baseDir;
     private string SessionsDir => Path.Combine(_baseDir, "sessions");
     private string IndexFile => Path.Combine(SessionsDir, "index.json");
     private readonly JsonSerializerOptions _jsonOptions = new()
@@ -13,6 +14,11 @@ public class SessionFileStore : ISessionFileStore
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    public SessionFileStore()
+    {
+        _baseDir = ConfigPaths.BaseConfigDirectory;
+    }
 
     public async Task<string> CreateAsync(string? title, string? agent, string? model, CancellationToken ct = default)
     {
@@ -44,6 +50,7 @@ public class SessionFileStore : ISessionFileStore
             TimestampUtc = DateTime.UtcNow
         });
         record.Metadata.LastUpdatedUtc = DateTime.UtcNow;
+    record.Metadata.MessageCount = record.Messages.Count;
         await PersistRecordAsync(record, ct).ConfigureAwait(false);
         await UpdateIndexAsync(record.Metadata, ct).ConfigureAwait(false);
     }
@@ -53,12 +60,21 @@ public class SessionFileStore : ISessionFileStore
         if (string.IsNullOrWhiteSpace(sessionId)) return null;
         var path = GetSessionPath(sessionId);
         if (!File.Exists(path)) return null;
-        try
+        // Try a couple times in case of rare transient read while file is being moved
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            await using var fs = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<SessionRecord>(fs, _jsonOptions, ct).ConfigureAwait(false);
+            try
+            {
+                await using var fs = File.OpenRead(path);
+                var rec = await JsonSerializer.DeserializeAsync<SessionRecord>(fs, _jsonOptions, ct).ConfigureAwait(false);
+                if (rec != null) return rec;
+            }
+            catch when (attempt < 2)
+            {
+                await Task.Delay(15, ct).ConfigureAwait(false);
+            }
         }
-        catch { return null; }
+        return null;
     }
 
     public async Task<IReadOnlyList<SessionMetadata>> ListAsync(int? take = null, CancellationToken ct = default)
@@ -75,7 +91,11 @@ public class SessionFileStore : ISessionFileStore
                 {
                     await using var fsr = File.OpenRead(f);
                     var rec = await JsonSerializer.DeserializeAsync<SessionRecord>(fsr, _jsonOptions, ct).ConfigureAwait(false);
-                    if (rec?.Metadata != null) metas.Add(rec.Metadata);
+                    if (rec?.Metadata != null)
+                    {
+                        rec.Metadata.MessageCount = rec.Messages?.Count ?? 0;
+                        metas.Add(rec.Metadata);
+                    }
                 }
                 catch { }
             }
@@ -119,6 +139,7 @@ public class SessionFileStore : ISessionFileStore
         await using (var fs = File.Create(tmp))
         {
             await JsonSerializer.SerializeAsync(fs, record, _jsonOptions, ct).ConfigureAwait(false);
+            await fs.FlushAsync(ct).ConfigureAwait(false);
         }
         File.Move(tmp, path, overwrite: true);
     }
@@ -129,7 +150,14 @@ public class SessionFileStore : ISessionFileStore
         var current = await ListAsync(null, ct).ConfigureAwait(false);
         var list = current.ToList();
         var existing = list.FindIndex(m => m.Id == meta.Id);
-        if (existing >= 0) list[existing] = meta; else list.Add(meta);
+        if (existing >= 0)
+        {
+            // Preserve existing MessageCount if new meta has zero but existing had value (defensive)
+            if (meta.MessageCount == 0 && list[existing].MessageCount > 0)
+                meta.MessageCount = list[existing].MessageCount;
+            list[existing] = meta;
+        }
+        else list.Add(meta);
         var tmp = IndexFile + ".tmp";
         await using (var fs = File.Create(tmp))
         {

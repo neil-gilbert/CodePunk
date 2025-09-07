@@ -138,7 +138,11 @@ internal static class ToolExecutionHelper
             
             // Tool completion status
             var statusIcon = result.IsError ? "❌" : "✅";
-            var statusMessage = $"\n🔧 Executing {toolCall.Name}... {statusIcon}\n";
+            var statusMessage = string.Empty;
+            if (Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1")
+            {
+                statusMessage = $"\n[tool] {toolCall.Name} {statusIcon}\n";
+            }
             
             return (toolResult, statusMessage);
         }
@@ -157,7 +161,11 @@ internal static class ToolExecutionHelper
                 "Tool execution timed out after 2 minutes",
                 true);
                 
-            var statusMessage = $"\n🔧 Executing {toolCall.Name}... ⏰ (timed out)\n";
+            var statusMessage = string.Empty;
+            if (Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1")
+            {
+                statusMessage = $"\n[tool] {toolCall.Name} ⏰ timeout\n";
+            }
             return (toolResult, statusMessage);
         }
         catch (Exception ex)
@@ -169,7 +177,11 @@ internal static class ToolExecutionHelper
                 $"Error executing tool: {ex.Message}",
                 true);
                 
-            var statusMessage = $"\n🔧 Executing {toolCall.Name}... ❌ (error)\n";
+            var statusMessage = string.Empty;
+            if (Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1")
+            {
+                statusMessage = $"\n[tool] {toolCall.Name} ❌ error\n";
+            }
             return (toolResult, statusMessage);
         }
     }

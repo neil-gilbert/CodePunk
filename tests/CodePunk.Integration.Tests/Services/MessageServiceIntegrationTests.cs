@@ -177,4 +177,36 @@ public class MessageServiceIntegrationTests : IntegrationTestBase
         var messagesAfterDelete = await MessageService.GetBySessionAsync(session.Id);
         messagesAfterDelete.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task CreatingAndDeletingMessages_ShouldUpdateSessionMessageCount()
+    {
+        // Arrange
+        var session = await SessionService.CreateAsync("Count Session");
+
+        // Initially zero
+        var fresh = await SessionService.GetByIdAsync(session.Id);
+        fresh!.MessageCount.Should().Be(0);
+
+        var m1 = Message.Create(session.Id, MessageRole.User, new List<MessagePart>{ new TextPart("One") });
+        var m2 = Message.Create(session.Id, MessageRole.Assistant, new List<MessagePart>{ new TextPart("Two") });
+        var m3 = Message.Create(session.Id, MessageRole.User, new List<MessagePart>{ new TextPart("Three") });
+
+        await MessageService.CreateAsync(m1);
+        await MessageService.CreateAsync(m2);
+        await MessageService.CreateAsync(m3);
+
+        var afterCreates = await SessionService.GetByIdAsync(session.Id);
+        afterCreates!.MessageCount.Should().Be(3);
+
+        // Delete one
+        await MessageService.DeleteAsync(m2.Id);
+        var afterDelete = await SessionService.GetByIdAsync(session.Id);
+        afterDelete!.MessageCount.Should().Be(2);
+
+        // Delete remaining via bulk delete
+        await MessageService.DeleteBySessionAsync(session.Id);
+        var afterBulkDelete = await SessionService.GetByIdAsync(session.Id);
+        afterBulkDelete!.MessageCount.Should().Be(0);
+    }
 }

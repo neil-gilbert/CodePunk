@@ -10,7 +10,7 @@ public static class ConsoleStyles
 {
     // Accent / brand colors (adjust later as desired)
     public const string AccentColor = "deepskyblue1";
-    public const string AccentAltColor = "mediumslateblue";
+    public const string AccentAltColor = "blue";
 
     // Semantic style tags
     public static string Info(string text) => $"[silver]{Escape(text)}[/]";

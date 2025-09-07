@@ -20,7 +20,7 @@ public class CommandProcessorTests
             new NewCommand(),
             new QuitCommand(),
             new ClearCommand(),
-            new SessionsCommand(Mock.Of<ISessionService>()),
+            new SessionsCommand(Mock.Of<ISessionService>(), Mock.Of<IMessageService>()),
             new LoadCommand(Mock.Of<ISessionService>())
         };
         help.Initialize(commands);

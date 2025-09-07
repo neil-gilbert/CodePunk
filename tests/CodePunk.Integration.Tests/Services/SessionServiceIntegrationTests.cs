@@ -68,11 +68,11 @@ public class SessionServiceIntegrationTests : IntegrationTestBase
         // Arrange
         var originalSession = await SessionService.CreateAsync("Original Title");
         
-        // Create updated session with same ID but different properties
+        // Create updated session with same ID but different properties.
+        // NOTE: MessageCount is now derived from actual messages and recomputed live; we no longer set it directly.
         var updatedSession = originalSession with 
-        { 
+        {
             Title = "Updated Title",
-            MessageCount = 5,
             Cost = 0.05m
         };
         
@@ -83,8 +83,61 @@ public class SessionServiceIntegrationTests : IntegrationTestBase
         var retrievedSession = await SessionService.GetByIdAsync(originalSession.Id);
         retrievedSession.Should().NotBeNull();
         retrievedSession!.Title.Should().Be("Updated Title");
-        retrievedSession.MessageCount.Should().Be(5);
+        // MessageCount should remain zero because no messages were created
+        retrievedSession.MessageCount.Should().Be(0);
         retrievedSession.Cost.Should().Be(0.05m);
         retrievedSession.CreatedAt.Should().Be(originalSession.CreatedAt); // Should not change
+    }
+
+    [Fact]
+    public async Task SessionMessageCount_ShouldReflectActualMessages()
+    {
+        // Arrange - Create a session
+        var session = await SessionService.CreateAsync("Test Session");
+        
+        // Verify initial count is zero
+        var initialSession = await SessionService.GetByIdAsync(session.Id);
+        initialSession!.MessageCount.Should().Be(0);
+        
+        // Act - Add some messages
+        await MessageService.CreateAsync(new Message 
+        { 
+            Id = Guid.NewGuid().ToString(),
+            SessionId = session.Id,
+            Role = MessageRole.User,
+            Parts = [new TextPart("Hello")],
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        
+        await MessageService.CreateAsync(new Message 
+        { 
+            Id = Guid.NewGuid().ToString(),
+            SessionId = session.Id,
+            Role = MessageRole.Assistant, 
+            Parts = [new TextPart("Hi there!")],
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        
+        await MessageService.CreateAsync(new Message 
+        { 
+            Id = Guid.NewGuid().ToString(),
+            SessionId = session.Id,
+            Role = MessageRole.User,
+            Parts = [new TextPart("How are you?")],
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        
+        // Assert - Check that message count is updated correctly
+        var updatedSession = await SessionService.GetByIdAsync(session.Id);
+        updatedSession!.MessageCount.Should().Be(3);
+        
+        // Also verify through GetRecentAsync
+        var recentSessions = await SessionService.GetRecentAsync(10);
+        var foundSession = recentSessions.FirstOrDefault(s => s.Id == session.Id);
+        foundSession.Should().NotBeNull();
+        foundSession!.MessageCount.Should().Be(3);
     }
 }

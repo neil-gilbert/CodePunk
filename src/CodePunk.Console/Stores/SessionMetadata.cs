@@ -8,6 +8,7 @@ public class SessionMetadata
     public string? Model { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
+    public int MessageCount { get; set; }
 }
 
 public class SessionMessageRecord

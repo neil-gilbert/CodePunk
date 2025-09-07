@@ -21,6 +21,15 @@ public class InteractiveChatSession
     public Session? CurrentSession { get; private set; }
     public bool IsActive => CurrentSession != null;
     public bool IsProcessing { get; private set; }
+    public string DefaultModel => _options.DefaultModel;
+    public string DefaultProvider => _options.DefaultProvider;
+    public int ToolIteration { get; private set; }
+    public bool IsToolLoopActive => ToolIteration > 0;
+    public int MaxToolIterations => _options.MaxToolCallIterations;
+    // Accumulated usage for current in-memory session (mirrors SessionEntity fields)
+    public long AccumulatedPromptTokens { get; private set; }
+    public long AccumulatedCompletionTokens { get; private set; }
+    public decimal AccumulatedCost { get; private set; }
 
     public InteractiveChatSession(
         ISessionService sessionService,
@@ -138,6 +147,7 @@ public class InteractiveChatSession
         while (finalResponse == null && iteration < _options.MaxToolCallIterations)
         {
             iteration++;
+            ToolIteration = iteration;
             _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
                 iteration, _options.MaxToolCallIterations);
                 
@@ -152,6 +162,7 @@ public class InteractiveChatSession
                 
             await _messageService.CreateAsync(aiResponse, cancellationToken).ConfigureAwait(false);
             currentMessages.Add(aiResponse);
+            // NOTE: Non-streaming path currently lacks precise usage; could approximate here later if needed.
 
             // If no tool calls, this is the final response
             if (toolCalls.Count == 0)
@@ -182,7 +193,8 @@ public class InteractiveChatSession
             finalResponse = fallbackMessage;
         }
 
-        _logger.LogInformation("Received final AI response for session {SessionId}", CurrentSession!.Id);
+    ToolIteration = 0; // reset after loop completes
+    _logger.LogInformation("Received final AI response for session {SessionId}", CurrentSession!.Id);
         return finalResponse;
     }
 
@@ -243,6 +255,7 @@ public class InteractiveChatSession
         while (iteration < _options.MaxToolCallIterations)
         {
             iteration++;
+            ToolIteration = iteration;
             _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
                 iteration, _options.MaxToolCallIterations);
             
@@ -277,10 +290,34 @@ public class InteractiveChatSession
                     ContentDelta = chunk.Content,
                     Model = model,
                     Provider = provider,
-                    IsComplete = chunk.IsComplete
+                    IsComplete = chunk.IsComplete,
+                    InputTokens = chunk.Usage?.InputTokens,
+                    OutputTokens = chunk.Usage?.OutputTokens,
+                    EstimatedCost = chunk.Usage?.EstimatedCost
                 };
 
                 yield return compatibleChunk;
+
+                if (chunk.IsComplete && chunk.Usage != null)
+                {
+                    // Update accumulated session usage
+                    AccumulatedPromptTokens += chunk.Usage.InputTokens;
+                    AccumulatedCompletionTokens += chunk.Usage.OutputTokens;
+                    AccumulatedCost += chunk.Usage.EstimatedCost;
+
+                    // Persist to session if available
+                    if (CurrentSession != null)
+                    {
+                        CurrentSession = CurrentSession with
+                        {
+                            PromptTokens = AccumulatedPromptTokens,
+                            CompletionTokens = AccumulatedCompletionTokens,
+                            Cost = AccumulatedCost
+                        };
+                        try { await _sessionService.UpdateAsync(CurrentSession, cancellationToken).ConfigureAwait(false); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "Failed to persist session usage update"); }
+                    }
+                }
             }
 
             // Create and save AI response
@@ -293,6 +330,7 @@ public class InteractiveChatSession
             // If no tool calls, this is the final response
             if (toolCalls.Count == 0)
             {
+                ToolIteration = 0; // final response reached
                 yield break;
             }
 
@@ -319,7 +357,7 @@ public class InteractiveChatSession
         }
 
         // Handle case where we hit max iterations without a final response
-        if (iteration >= _options.MaxToolCallIterations)
+    if (iteration >= _options.MaxToolCallIterations)
         {
             _logger.LogWarning("Tool calling loop exceeded maximum iterations ({MaxIterations}), creating fallback response", 
                 _options.MaxToolCallIterations);
@@ -338,6 +376,7 @@ public class InteractiveChatSession
                 IsComplete = true
             };
         }
+        ToolIteration = 0; // reset after loop
     }
 
     /// <summary>

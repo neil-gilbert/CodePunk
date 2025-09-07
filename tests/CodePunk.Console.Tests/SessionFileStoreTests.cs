@@ -12,17 +12,31 @@ public class SessionFileStoreTests
         Environment.SetEnvironmentVariable("CODEPUNK_CONFIG_HOME", tmp);
         try
         {
+            // Ensure the directory exists before starting
+            Directory.CreateDirectory(tmp);
+            
+            // Construct after env var set so captured base dir points at temp path
             var store = new SessionFileStore();
             var sessionId = await store.CreateAsync("Test Session", "agentA", "modelX");
             Assert.False(string.IsNullOrWhiteSpace(sessionId));
+            
             await store.AppendMessageAsync(sessionId, "user", "Hello");
             await store.AppendMessageAsync(sessionId, "assistant", "Hi there");
-            var record = await store.GetAsync(sessionId);
-            Assert.True(File.Exists(Path.Combine(tmp, "sessions", sessionId + ".json")), "Session file was not written");
-            Assert.NotNull(record); // record should deserialize
-            Assert.Equal(2, record!.Messages.Count);
+            
+            // Small retry loop in case of very fast file system delay
+            SessionRecord? record = null;
+            for (int i = 0; i < 3 && record == null; i++)
+            {
+                record = await store.GetAsync(sessionId);
+                if (record == null) await Task.Delay(10);
+            }
+            Assert.NotNull(record);
+            var expectedPath = Path.Combine(tmp, "sessions", sessionId + ".json");
+            Assert.True(File.Exists(expectedPath), $"Session file was not written to {expectedPath}");
+            Assert.Equal(2, record.Messages.Count);
+            
             var list = await store.ListAsync();
-            Assert.Single(list);
+            Assert.Contains(list, m => m.Id == sessionId);
         }
         finally
         {

@@ -60,6 +60,7 @@ builder.Services.AddSingleton<ISessionFileStore, SessionFileStore>();
 // Chat loop orchestration (interactive console loop). Scoped to align with InteractiveChatSession scope.
 builder.Services.AddScoped<InteractiveChatLoop>();
 // Rendering component for streaming AI responses
+builder.Services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });
 builder.Services.AddSingleton<StreamingResponseRenderer>();
 
 // Chat command registrations
@@ -69,18 +70,17 @@ builder.Services.AddTransient<ChatCommand, QuitCommand>();
 builder.Services.AddTransient<ChatCommand, ClearCommand>();
 builder.Services.AddTransient<ChatCommand, SessionsCommand>();
 builder.Services.AddTransient<ChatCommand, LoadCommand>();
+builder.Services.AddTransient<ChatCommand, UseCommand>();
+builder.Services.AddTransient<ChatCommand, UsageCommand>();
 builder.Services.AddSingleton<CommandProcessor>();
 
 var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();
 
-// Initialize HelpCommand with full command list (avoid constructor circular dependency)
-using (var scope = host.Services.CreateScope())
-{
-    var commands = scope.ServiceProvider.GetServices<ChatCommand>().ToList();
-    var help = commands.OfType<HelpCommand>().FirstOrDefault();
-    help?.Initialize(commands);
-}
+// Initialize HelpCommand with the actual instances captured by CommandProcessor (avoid duplicate transient set)
+var commandProcessor = host.Services.GetRequiredService<CommandProcessor>();
+var help = commandProcessor.GetAllCommands().OfType<HelpCommand>().FirstOrDefault();
+help?.Initialize(commandProcessor.GetAllCommands());
 
 var root = RootCommandFactory.Create(host.Services);
 

@@ -1,245 +1,260 @@
-using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
 using Spectre.Console;
 using System.Text;
+using CodePunk.Console.Themes;
 
 namespace CodePunk.Console.Rendering;
 
 /// <summary>
-/// Renders streaming AI responses with real-time updates
+/// Renders streaming AI responses (baseline). Writes chunks directly; later we can upgrade to Live panels.
 /// </summary>
 public class StreamingResponseRenderer
 {
     private readonly IAnsiConsole _console;
-    private readonly StringBuilder _currentResponse;
+    private readonly StringBuilder _buffer = new();
     private bool _isStreaming;
+    private DateTime _startUtc;
+    private readonly StreamingRendererOptions _options;
+    private CancellationTokenSource? _liveCts;
+    private Task? _liveTask;
+    private readonly object _sync = new();
+    private int? _inputTokens;
+    private int? _outputTokens;
+    private decimal? _estimatedCost;
 
-    public StreamingResponseRenderer(IAnsiConsole console)
+    public StreamingResponseRenderer(IAnsiConsole console, StreamingRendererOptions? options = null)
     {
         _console = console;
-        _currentResponse = new StringBuilder();
+        _options = options ?? new StreamingRendererOptions();
     }
 
-    /// <summary>
-    /// Starts a new streaming response
-    /// </summary>
     public void StartStreaming()
     {
-        _currentResponse.Clear();
+        _buffer.Clear();
         _isStreaming = true;
-        
-        // Show AI indicator
+        _startUtc = DateTime.UtcNow;
         _console.Write(new Rule().LeftJustified());
-        _console.MarkupLine("[bold blue]🤖 AI Assistant[/]");
+        var header = _options.LiveEnabled ? "🤖 AI Assistant (live)" : "🤖 AI Assistant";
+        _console.MarkupLine(ConsoleStyles.Accent(header));
         _console.WriteLine();
-    }
 
-    /// <summary>
-    /// Processes a stream chunk and updates the display
-    /// </summary>
-    public void ProcessChunk(ChatStreamChunk chunk)
-    {
-        if (!_isStreaming)
-            return;
-
-        if (chunk.ContentDelta != null)
+        if (_options.LiveEnabled)
         {
-            _currentResponse.Append(chunk.ContentDelta);
-            
-            // For now, just write the delta directly
-            // In a more sophisticated implementation, we could:
-            // - Buffer and format markdown
-            // - Handle code blocks with syntax highlighting
-            // - Show typing indicators
-            _console.Write(chunk.ContentDelta);
+            _liveCts = new CancellationTokenSource();
+            var token = _liveCts.Token;
+            _liveTask = Task.Run(() =>
+            {
+                try
+                {
+                    _console.Live(BuildPanel(string.Empty))
+                        .AutoClear(false)
+                        .Start(ctx =>
+                        {
+                            while (!token.IsCancellationRequested)
+                            {
+                                string snapshot;
+                                TimeSpan elapsed;
+                                lock (_sync)
+                                {
+                                    snapshot = _buffer.ToString();
+                                    elapsed = DateTime.UtcNow - _startUtc;
+                                }
+                                ctx.UpdateTarget(BuildPanel(snapshot, elapsed));
+                                ctx.Refresh();
+                                Thread.Sleep(100); // ~10fps
+                            }
+
+                            // Final update
+                            string finalSnapshot;
+                            TimeSpan finalElapsed;
+                            lock (_sync)
+                            {
+                                finalSnapshot = _buffer.ToString();
+                                finalElapsed = DateTime.UtcNow - _startUtc;
+                            }
+                            ctx.UpdateTarget(BuildPanel(finalSnapshot, finalElapsed, completed: true));
+                            ctx.Refresh();
+                        });
+                }
+                catch { /* swallow best-effort */ }
+            }, token);
         }
     }
 
-    /// <summary>
-    /// Completes the streaming response
-    /// </summary>
+    public void ProcessChunk(ChatStreamChunk chunk)
+    {
+        if (!_isStreaming) return;
+        if (string.IsNullOrEmpty(chunk.ContentDelta)) return;
+        lock (_sync)
+        {
+            _buffer.Append(chunk.ContentDelta);
+            // Capture usage metrics if present (usually only once at end)
+            if (chunk.InputTokens.HasValue)
+                _inputTokens = chunk.InputTokens;
+            if (chunk.OutputTokens.HasValue)
+                _outputTokens = chunk.OutputTokens;
+            if (chunk.EstimatedCost.HasValue)
+                _estimatedCost = chunk.EstimatedCost;
+        }
+        if (!_options.LiveEnabled)
+        {
+            _console.Markup(ConsoleStyles.Escape(chunk.ContentDelta));
+        }
+    }
+
     public void CompleteStreaming()
     {
-        if (!_isStreaming)
-            return;
-
+        if (!_isStreaming) return;
         _isStreaming = false;
-        _console.WriteLine();
+        if (_options.LiveEnabled)
+        {
+            try
+            {
+                _liveCts?.Cancel();
+                _liveTask?.Wait(500);
+            }
+            catch { }
+            finally
+            {
+                _liveCts?.Dispose();
+                _liveCts = null;
+                _liveTask = null;
+            }
+            _console.WriteLine();
+        }
+        else
+        {
+            _console.WriteLine();
+        }
+        var elapsed = DateTime.UtcNow - _startUtc;
+        var completionLine = new StringBuilder();
+        completionLine.Append($"Completed in {elapsed.TotalSeconds:F1}s");
+        if (_inputTokens.HasValue || _outputTokens.HasValue)
+        {
+            completionLine.Append(" • tokens: ");
+            var input = _inputTokens?.ToString() ?? "?";
+            var output = _outputTokens?.ToString() ?? "?";
+            completionLine.Append($"in {input} / out {output}");
+            var total = (_inputTokens ?? 0) + (_outputTokens ?? 0);
+            completionLine.Append($" (total {total}");
+            if (_estimatedCost.HasValue)
+            {
+                completionLine.Append($", cost ~{_estimatedCost.Value:C}" );
+            }
+            completionLine.Append(')');
+        }
+        _console.MarkupLine(ConsoleStyles.Dim(completionLine.ToString()));
         _console.WriteLine();
     }
 
-    /// <summary>
-    /// Renders a complete message (non-streaming)
-    /// </summary>
     public void RenderMessage(Message message)
     {
         _console.Write(new Rule().LeftJustified());
-        
-        // Render message header
-        var roleColor = message.Role switch
+        var (roleColor, roleIcon) = message.Role switch
         {
-            MessageRole.User => "green",
-            MessageRole.Assistant => "blue", 
-            MessageRole.System => "yellow",
-            MessageRole.Tool => "purple",
-            _ => "white"
+            MessageRole.User => ("green", "👤"),
+            MessageRole.Assistant => ("blue", "🤖"),
+            MessageRole.System => ("yellow", "⚙️"),
+            MessageRole.Tool => ("purple", "�"),
+            _ => ("white", "💬")
         };
-
-        var roleIcon = message.Role switch
-        {
-            MessageRole.User => "👤",
-            MessageRole.Assistant => "🤖",
-            MessageRole.System => "⚙️",
-            MessageRole.Tool => "🔧",
-            _ => "💬"
-        };
-
         _console.MarkupLine($"[bold {roleColor}]{roleIcon} {message.Role}[/]");
-        
         if (!string.IsNullOrEmpty(message.Model))
         {
             _console.MarkupLine($"[dim]Model: {message.Model}[/]");
         }
-        
         _console.WriteLine();
-
-        // Render message content
         foreach (var part in message.Parts)
         {
             RenderMessagePart(part);
         }
-
         _console.WriteLine();
     }
 
-    /// <summary>
-    /// Renders a single message part
-    /// </summary>
     private void RenderMessagePart(MessagePart part)
     {
         switch (part)
         {
-            case TextPart textPart:
-                RenderText(textPart.Content);
+            case TextPart text:
+                RenderText(text.Content);
                 break;
-                
-            case ToolCallPart toolCallPart:
-                RenderToolCall(toolCallPart);
+            case ToolCallPart toolCall:
+                RenderToolCall(toolCall);
                 break;
-                
-            case ToolResultPart toolResultPart:
-                RenderToolResult(toolResultPart);
+            case ToolResultPart toolResult:
+                RenderToolResult(toolResult);
                 break;
-                
-            case ImagePart imagePart:
-                RenderImage(imagePart);
+            case ImagePart image:
+                RenderImage(image);
                 break;
-                
             default:
-                _console.MarkupLine($"[dim]Unknown message part type: {part.GetType().Name}[/]");
+                _console.MarkupLine($"[dim]Unknown part: {part.GetType().Name}[/]");
                 break;
         }
     }
 
-    /// <summary>
-    /// Renders text content with basic markdown support
-    /// </summary>
     private void RenderText(string content)
     {
-        // Basic markdown rendering - can be enhanced later
-        var lines = content.Split('\n');
-        
+        if (string.IsNullOrEmpty(content)) return;
+        var lines = content.Replace("\r\n", "\n").Split('\n');
         foreach (var line in lines)
         {
-            if (line.StartsWith("```"))
-            {
-                // Code block delimiter
-                _console.MarkupLine("[dim]```[/]");
-            }
-            else if (line.StartsWith("# "))
-            {
-                // Header
-                _console.MarkupLine($"[bold underline]{line[2..]}[/]");
-            }
+            if (line.StartsWith("### "))
+                _console.MarkupLine($"[bold]{ConsoleStyles.Escape(line[4..])}[/]");
             else if (line.StartsWith("## "))
-            {
-                // Subheader
-                _console.MarkupLine($"[bold]{line[3..]}[/]");
-            }
+                _console.MarkupLine($"[bold]{ConsoleStyles.Escape(line[3..])}[/]");
+            else if (line.StartsWith("# "))
+                _console.MarkupLine($"[bold underline]{ConsoleStyles.Escape(line[2..])}[/]");
             else if (line.StartsWith("- ") || line.StartsWith("* "))
-            {
-                // Bullet point
-                _console.MarkupLine($"  • {line[2..]}");
-            }
+                _console.MarkupLine($"  • {ConsoleStyles.Escape(line[2..])}");
             else
-            {
-                // Regular text
-                _console.WriteLine(line);
-            }
+                _console.MarkupLine(ConsoleStyles.Escape(line));
         }
     }
 
-    /// <summary>
-    /// Renders a tool call
-    /// </summary>
     private void RenderToolCall(ToolCallPart toolCall)
     {
-        _console.MarkupLine($"[purple]🔧 Tool Call: {toolCall.Name}[/]");
-        _console.MarkupLine($"[dim]ID: {toolCall.Id}[/]");
-        
-        // Show arguments if they're reasonable to display
-        var argsJson = toolCall.Arguments.ToString();
-        if (argsJson.Length < 200)
-        {
-            _console.MarkupLine($"[dim]Arguments: {argsJson}[/]");
-        }
-        else
-        {
-            _console.MarkupLine("[dim]Arguments: [large JSON object][/]");
-        }
+        _console.MarkupLine("[purple]🔧 Tool Call[/]");
+        _console.MarkupLine($"[dim]Id: {ConsoleStyles.Escape(toolCall.Id)}  Name: {ConsoleStyles.Escape(toolCall.Name)}[/]");
+        var args = toolCall.Arguments.ToString();
+        if (args.Length > 500) args = args[..500] + "…";
+        _console.MarkupLine($"[dim]Args: {ConsoleStyles.Escape(args)}[/]");
         _console.WriteLine();
     }
 
-    /// <summary>
-    /// Renders a tool result
-    /// </summary>
     private void RenderToolResult(ToolResultPart toolResult)
     {
-        var statusColor = toolResult.IsError ? "red" : "green";
-        var statusIcon = toolResult.IsError ? "❌" : "✅";
-        
-        _console.MarkupLine($"[{statusColor}]{statusIcon} Tool Result[/]");
-        _console.MarkupLine($"[dim]Tool Call ID: {toolResult.ToolCallId}[/]");
-        
-        // Render the result content
+        var color = toolResult.IsError ? "red" : "green";
+        var icon = toolResult.IsError ? "❌" : "✅";
+        _console.MarkupLine($"[{color}]{icon} Tool Result[/]");
+        _console.MarkupLine($"[dim]Tool Call ID: {ConsoleStyles.Escape(toolResult.ToolCallId)}[/]");
+        var content = toolResult.Content;
+        if (content.Length > 1000) content = content[..1000] + "\n[... truncated ...]";
         if (toolResult.IsError)
-        {
-            _console.MarkupLine($"[red]Error: {toolResult.Content}[/]");
-        }
+            _console.MarkupLine($"[red]{ConsoleStyles.Escape(content)}[/]");
         else
-        {
-            // Truncate very long results
-            var content = toolResult.Content;
-            if (content.Length > 1000)
-            {
-                content = content[..1000] + "\n[... output truncated ...]";
-            }
             _console.WriteLine(content);
-        }
         _console.WriteLine();
     }
 
-    /// <summary>
-    /// Renders an image reference
-    /// </summary>
     private void RenderImage(ImagePart image)
     {
-        _console.MarkupLine($"[cyan]🖼️ Image: {image.Url}[/]");
+        _console.MarkupLine($"[cyan]🖼️ Image: {ConsoleStyles.Escape(image.Url)}[/]");
         if (!string.IsNullOrEmpty(image.Description))
-        {
-            _console.MarkupLine($"[dim]Description: {image.Description}[/]");
-        }
+            _console.MarkupLine($"[dim]{ConsoleStyles.Escape(image.Description)}[/]");
         _console.WriteLine();
+    }
+
+    private Panel BuildPanel(string content, TimeSpan? elapsed = null, bool completed = false)
+    {
+        var body = string.IsNullOrEmpty(content)
+            ? ConsoleStyles.Dim("(streaming…)")
+            : ConsoleStyles.Escape(content);
+        var time = elapsed.HasValue ? ConsoleStyles.Dim($" {elapsed.Value.TotalSeconds:F1}s") : string.Empty;
+        var title = completed ? $"🤖 AI Assistant{time}" : $"🤖 AI Assistant{time}";
+        return new Panel(new Markup(body))
+            .Header(ConsoleStyles.PanelTitle(title))
+            .RoundedBorder();
     }
 }

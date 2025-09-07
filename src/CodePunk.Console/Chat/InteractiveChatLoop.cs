@@ -180,7 +180,11 @@ public class InteractiveChatLoop
         // Show session info
         if (_chatSession.IsActive)
         {
-            _console.Markup($" [dim](Session: {_chatSession.CurrentSession!.Id[..8]}...)[/]");
+            var sid = _chatSession.CurrentSession!.Id[..8];
+            var provider = _chatSession.DefaultProvider;
+            var model = _chatSession.DefaultModel;
+            var iter = _chatSession.IsToolLoopActive ? $" • tools {_chatSession.ToolIteration}/{_chatSession.MaxToolIterations}" : string.Empty;
+            _console.Markup($" [dim](Session: {sid} • {provider}:{model}{iter})[/]");
         }
         
         _console.WriteLine();

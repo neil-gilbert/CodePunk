@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/CodePunk.Core/CodePunk.Core.csproj" />
+    <ProjectReference Include="../src/CodePunk.Data/CodePunk.Data.csproj" />
+    <ProjectReference Include="../src/CodePunk.Console/CodePunk.Console.csproj" />
+  </ItemGroup>
+
+</Project>
