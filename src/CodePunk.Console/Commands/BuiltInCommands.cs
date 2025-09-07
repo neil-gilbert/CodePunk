@@ -1,6 +1,7 @@
 using CodePunk.Core.Abstractions;
 using Spectre.Console;
 using System.Linq;
+using CodePunk.Console.Themes;
 
 namespace CodePunk.Console.Commands;
 
@@ -68,8 +69,7 @@ public class NewCommand : ChatCommand
         var sessionTitle = args.Length > 0 
             ? string.Join(" ", args)
             : $"Chat Session {DateTime.Now:yyyy-MM-dd HH:mm}";
-
-        return Task.FromResult(CommandResult.ClearSession($"Starting new session: [cyan]{sessionTitle}[/]"));
+    return Task.FromResult(CommandResult.ClearSession($"Starting new session: {Console.Themes.ConsoleStyles.Accent(sessionTitle)}"));
     }
 }
 
@@ -84,7 +84,7 @@ public class QuitCommand : ChatCommand
 
     public override Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(CommandResult.Exit("[dim]Goodbye! 👋[/]"));
+    return Task.FromResult(CommandResult.Exit(Console.Themes.ConsoleStyles.Dim("Goodbye! 👋")));
     }
 }
 
@@ -124,38 +124,37 @@ public class SessionsCommand : ChatCommand
     {
         var console = AnsiConsole.Console;
         
-        console.WriteLine();
-        console.Write(new Rule("[cyan]Recent Sessions[/]").LeftJustified());
-        console.WriteLine();
+    console.WriteLine();
+    console.Write(ConsoleStyles.HeaderRule("Recent Sessions"));
+    console.WriteLine();
 
         var sessions = await _sessionService.GetRecentAsync(10, cancellationToken);
         
         if (!sessions.Any())
         {
-            console.MarkupLine("[dim]No sessions found. Start chatting to create your first session![/]");
+            console.MarkupLine(ConsoleStyles.Warn("No sessions found. Start chatting to create your first session!"));
             console.WriteLine();
             return CommandResult.Ok();
         }
 
-        var table = new Table()
-            .AddColumn("ID")
-            .AddColumn("Title")
-            .AddColumn("Created")
-            .AddColumn("Messages")
-            .BorderColor(Color.Grey);
+        var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Recent"));
+        table.AddColumn("ID");
+        table.AddColumn("Title");
+        table.AddColumn(new TableColumn("Created").Centered());
+        table.AddColumn(new TableColumn("Msgs").Centered());
 
         foreach (var session in sessions)
         {
             table.AddRow(
-                $"[dim]{session.Id[..8]}...[/]",
-                session.Title,
-                $"[dim]{session.CreatedAt:yyyy-MM-dd HH:mm}[/]",
+                ConsoleStyles.Dim(session.Id[..8] + "…"),
+                ConsoleStyles.Accent(session.Title),
+                ConsoleStyles.Dim(session.CreatedAt.ToString("yyyy-MM-dd HH:mm")),
                 session.MessageCount.ToString());
         }
 
         console.Write(table);
         console.WriteLine();
-        console.MarkupLine("[dim]Tip: Use /load <session-id> to continue a previous conversation[/]");
+        console.MarkupLine(ConsoleStyles.Dim("Tip: Use /load <session-id> to continue a previous conversation"));
         console.WriteLine();
 
         return CommandResult.Ok();
@@ -182,7 +181,7 @@ public class LoadCommand : ChatCommand
     {
         if (args.Length == 0)
         {
-            return CommandResult.Error("Please provide a session ID. Use [cyan]/sessions[/] to see available sessions.");
+            return CommandResult.Error($"{Console.Themes.ConsoleStyles.Warn("Please provide a session ID.")} Use {Console.Themes.ConsoleStyles.Accent("/sessions")} to see available sessions.");
         }
 
         var sessionId = args[0];
@@ -190,10 +189,11 @@ public class LoadCommand : ChatCommand
         
         if (session == null)
         {
-            return CommandResult.Error($"Session not found: [red]{sessionId}[/]");
+            return CommandResult.Error($"Session not found: {Console.Themes.ConsoleStyles.Error(sessionId)}");
         }
 
         // Note: The actual session loading will be handled by the chat loop
-        return CommandResult.Ok($"Loaded session: [cyan]{session.Title}[/] (ID: {session.Id[..8]}...)");
+    var shortId = session.Id.Length > 8 ? session.Id[..8] + "…" : session.Id;
+    return CommandResult.Ok($"Loaded session: {Console.Themes.ConsoleStyles.Accent(session.Title)} {Console.Themes.ConsoleStyles.Dim("(ID: " + shortId + ")")}");
     }
 }

@@ -3,6 +3,7 @@ using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using CodePunk.Console.Stores;
 using CodePunk.Infrastructure.Configuration;
+using CodePunk.Console.Themes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -14,20 +15,37 @@ using OpenTelemetry.Resources;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Serilog basic console (can refine later)
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+// Quiet / verbose logging control via env var CODEPUNK_VERBOSE=1 (default quiet console)
+var verbose = Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1";
+
+var loggerConfig = new LoggerConfiguration();
+if (verbose)
+{
+    loggerConfig = loggerConfig.MinimumLevel.Information()
+        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+}
+// Always write to rolling file (retain existing behavior)
+loggerConfig = loggerConfig.WriteTo.File(
+    path: "logs/codepunk-.log",
+    rollingInterval: RollingInterval.Day,
+    retainedFileCountLimit: 7,
+    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+Log.Logger = loggerConfig.CreateLogger();
 
 builder.Logging.ClearProviders();
-builder.Logging.AddSerilog();
+builder.Logging.AddSerilog(dispose: true);
 
 // OpenTelemetry (basic console exporter for now)
 builder.Services.AddOpenTelemetry().WithTracing(tp =>
 {
     tp.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("CodePunk.CLI"));
     tp.AddSource("CodePunk.CLI");
-    tp.AddConsoleExporter();
+    if (verbose)
+    {
+        // Only emit console spans when in verbose mode to keep UI clean
+        tp.AddConsoleExporter();
+    }
 });
 
 // Core + infrastructure (DbContext, repositories, services, providers, tools)
@@ -65,4 +83,15 @@ using (var scope = host.Services.CreateScope())
 }
 
 var root = RootCommandFactory.Create(host.Services);
+
+// If no args (interactive) and not verbose logs, render a header rule once for polish
+if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") != "1")
+{
+    var console = host.Services.GetRequiredService<IAnsiConsole>();
+    console.Write(ConsoleStyles.HeaderRule("Interactive Session"));
+    console.WriteLine();
+    console.MarkupLine(ConsoleStyles.Dim("Type /help for commands."));
+    console.WriteLine();
+}
+
 return await root.InvokeAsync(args);

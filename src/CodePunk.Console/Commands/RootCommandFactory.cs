@@ -9,6 +9,7 @@ using CodePunk.Console.Stores;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Services;
+using CodePunk.Console.Themes;
 
 namespace CodePunk.Console.Commands;
 
@@ -16,7 +17,7 @@ internal static class RootCommandFactory
 {
     public static RootCommand Create(IServiceProvider services)
     {
-        var root = new RootCommand("CodePunk CLI")
+    var root = new RootCommand("CodePunk CLI")
         {
             BuildRun(services),
             BuildAuth(services),
@@ -98,7 +99,8 @@ internal static class RootCommandFactory
                     activity?.SetTag("tokens.completion.approx", completionTokensApprox);
                     activity?.SetTag("tokens.total.approx", promptTokensApprox + completionTokensApprox);
                 }
-                console.MarkupLine($"[dim]Session: {sessionId}[/]");
+                var shortId = sessionId.Length > 10 ? sessionId[..10] + "…" : sessionId;
+                console.MarkupLine($"{ConsoleStyles.Dim("Session:")} {ConsoleStyles.Accent(shortId)}");
             }
             else
             {
@@ -119,13 +121,15 @@ internal static class RootCommandFactory
             using var activity = Telemetry.ActivitySource.StartActivity("auth.login", ActivityKind.Client);
             activity?.SetTag("provider", provider);
             var store = services.GetRequiredService<IAuthStore>();
+            var console = services.GetRequiredService<IAnsiConsole>();
             if (string.IsNullOrWhiteSpace(key))
             {
-                System.Console.Write("Enter API key: ");
-                key = System.Console.ReadLine() ?? string.Empty;
+                key = console.Prompt(new TextPrompt<string>(ConsoleStyles.Accent("Enter API key:"))
+                    .PromptStyle("silver")
+                    .Secret());
             }
             await store.SetAsync(provider, key);
-            System.Console.WriteLine($"Stored key for provider '{provider}'.");
+            console.MarkupLine($"{ConsoleStyles.Success("Stored")} {ConsoleStyles.Dim("provider")} {ConsoleStyles.Accent(provider)}");
         }, providerOpt, keyOpt);
         var list = new Command("list", "List authenticated providers");
         list.SetHandler(async () =>
@@ -133,12 +137,15 @@ internal static class RootCommandFactory
             using var activity = Telemetry.ActivitySource.StartActivity("auth.list", ActivityKind.Client);
             var store = services.GetRequiredService<IAuthStore>();
             var map = await store.LoadAsync();
-            if (map.Count == 0) { System.Console.WriteLine("No providers authenticated."); return; }
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (map.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("No providers authenticated.")); return; }
+            var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Providers")).AddColumn("Name").AddColumn("Key");
             foreach (var kv in map)
             {
                 var masked = kv.Value.Length <= 8 ? new string('*', kv.Value.Length) : kv.Value[..4] + new string('*', kv.Value.Length-4);
-                System.Console.WriteLine($"{kv.Key}\t{masked}");
+                table.AddRow(ConsoleStyles.Accent(kv.Key), $"[grey]{masked}[/]");
             }
+            console.Write(table);
         });
         var logoutProviderOpt = new Option<string>("--provider") { IsRequired = true };
         var logout = new Command("logout", "Remove stored provider key") { logoutProviderOpt };
@@ -148,7 +155,8 @@ internal static class RootCommandFactory
             activity?.SetTag("provider", provider);
             var store = services.GetRequiredService<IAuthStore>();
             await store.RemoveAsync(provider);
-            System.Console.WriteLine($"Removed provider '{provider}'.");
+            var console = services.GetRequiredService<IAnsiConsole>();
+            console.MarkupLine($"{ConsoleStyles.Success("Removed")} {ConsoleStyles.Accent(provider)}");
         }, logoutProviderOpt);
         auth.AddCommand(login); auth.AddCommand(list); auth.AddCommand(logout); return auth;
     }
@@ -167,6 +175,7 @@ internal static class RootCommandFactory
             using var activity = Telemetry.ActivitySource.StartActivity("agent.create", ActivityKind.Client);
             activity?.SetTag("agent.name", name);
             var store = services.GetRequiredService<IAgentStore>();
+            var console = services.GetRequiredService<IAnsiConsole>();
             string? prompt = null;
             if (!string.IsNullOrWhiteSpace(promptFile) && File.Exists(promptFile))
             {
@@ -180,7 +189,7 @@ internal static class RootCommandFactory
                 PromptFilePath = string.IsNullOrWhiteSpace(promptFile) ? null : promptFile
             };
             await store.CreateAsync(def, overwrite);
-            System.Console.WriteLine($"Agent '{name}' created.");
+            console.MarkupLine($"{ConsoleStyles.Success("Agent created")} {ConsoleStyles.Accent(name)}");
         }, nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt);
         var list = new Command("list", "List agents");
         list.SetHandler(async () =>
@@ -188,9 +197,15 @@ internal static class RootCommandFactory
             using var activity = Telemetry.ActivitySource.StartActivity("agent.list", ActivityKind.Client);
             var store = services.GetRequiredService<IAgentStore>();
             var defs = await store.ListAsync();
-            if (!defs.Any()) { System.Console.WriteLine("No agents defined."); return; }
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (!defs.Any()) { console.MarkupLine(ConsoleStyles.Warn("No agents defined.")); return; }
+            var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Agents"));
+            table.AddColumn("Name").AddColumn("Provider").AddColumn("Model");
             foreach (var d in defs)
-                System.Console.WriteLine($"{d.Name}\t{d.Provider}\t{d.Model ?? "(default model)"}");
+            {
+                table.AddRow(ConsoleStyles.Accent(d.Name), string.IsNullOrWhiteSpace(d.Provider)?"[grey]-[/]":d.Provider, d.Model ?? "[grey](default)" );
+            }
+            console.Write(table);
         });
         var showNameOpt = new Option<string>("--name") { IsRequired = true };
         var show = new Command("show", "Show agent definition") { showNameOpt };
@@ -200,8 +215,12 @@ internal static class RootCommandFactory
             activity?.SetTag("agent.name", name);
             var store = services.GetRequiredService<IAgentStore>();
             var def = await store.GetAsync(name);
-            if (def == null) { System.Console.WriteLine("Not found"); return; }
-            System.Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(def, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (def == null) { console.MarkupLine(ConsoleStyles.Error("Agent not found")); return; }
+            var json = System.Text.Json.JsonSerializer.Serialize(def, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            console.Write(new Panel(new Markup($"[grey]{ConsoleStyles.Escape(json)}[/]"))
+                .Header(ConsoleStyles.PanelTitle(def.Name))
+                .RoundedBorder());
         }, showNameOpt);
         var deleteNameOpt = new Option<string>("--name") { IsRequired = true };
         var delete = new Command("delete", "Delete agent") { deleteNameOpt };
@@ -211,7 +230,8 @@ internal static class RootCommandFactory
             activity?.SetTag("agent.name", name);
             var store = services.GetRequiredService<IAgentStore>();
             await store.DeleteAsync(name);
-            System.Console.WriteLine($"Deleted agent '{name}'.");
+            var console = services.GetRequiredService<IAnsiConsole>();
+            console.MarkupLine($"{ConsoleStyles.Success("Deleted")} {ConsoleStyles.Accent(name)}");
         }, deleteNameOpt);
         agent.AddCommand(create); agent.AddCommand(list); agent.AddCommand(show); agent.AddCommand(delete); return agent;
     }
@@ -236,22 +256,31 @@ internal static class RootCommandFactory
                 writer.Write(jsonOut + "\n");
                 return;
             }
+            var console = services.GetRequiredService<IAnsiConsole>();
             if (providers.Count == 0)
             {
-                writer.Write("No providers available. Authenticate first: codepunk auth login --provider <name> --key <APIKEY>\n");
+                console.MarkupLine(ConsoleStyles.Warn("No providers available. Authenticate first: codepunk auth login --provider <name> --key <APIKEY>"));
                 return;
             }
             if (rows.Count == 0)
             {
-                writer.Write("No models found.\n");
+                console.MarkupLine(ConsoleStyles.Warn("No models found."));
                 return;
             }
-            writer.Write("PROVIDER\tMODEL ID\tNAME\tCTX\tMAX\tTOOLS\tSTREAM\n");
+            var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Models"));
+            table.AddColumn("Provider");
+            table.AddColumn("Model Id");
+            table.AddColumn("Name");
+            table.AddColumn(new TableColumn("Ctx").Centered());
+            table.AddColumn(new TableColumn("Max").Centered());
+            table.AddColumn(new TableColumn("Tools").Centered());
+            table.AddColumn(new TableColumn("Stream").Centered());
             foreach (var r in rows)
             {
-                writer.Write($"{r.Provider}\t{r.Id}\t{r.Name}\t{r.Context}\t{r.MaxTokens}\t{(r.Tools ? "y" : "-")}\t{(r.Streaming ? "y" : "-")}\n");
+                table.AddRow(ConsoleStyles.Accent(r.Provider), r.Id, r.Name, r.Context.ToString(), r.MaxTokens.ToString(), r.Tools?"[green]✓[/]":"[grey]-[/]", r.Streaming?"[green]✓[/]":"[grey]-[/]");
             }
-            await Task.CompletedTask;
+            console.Write(table);
+            await Task.CompletedTask; // ensure async signature satisfied
         });
         return cmd;
     }
