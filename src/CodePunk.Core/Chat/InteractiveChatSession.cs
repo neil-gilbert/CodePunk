@@ -16,6 +16,7 @@ public class InteractiveChatSession
     private readonly ILLMService _llmService;
     private readonly IToolService _toolService;
     private readonly ILogger<InteractiveChatSession> _logger;
+    private readonly IChatSessionEventStream _eventStream;
     private readonly IChatSessionOptions _options;
 
     public Session? CurrentSession { get; private set; }
@@ -35,7 +36,8 @@ public class InteractiveChatSession
         IMessageService messageService,
         ILLMService llmService,
         IToolService toolService,
-        ILogger<InteractiveChatSession> logger,
+    ILogger<InteractiveChatSession> logger,
+    IChatSessionEventStream? eventStream = null,
         IChatSessionOptions? options = null)
     {
         _sessionService = sessionService;
@@ -43,6 +45,7 @@ public class InteractiveChatSession
         _llmService = llmService;
         _toolService = toolService;
         _logger = logger;
+    _eventStream = eventStream ?? new ChatSessionEventStream();
         _options = options ?? new ChatSessionOptions();
     }
 
@@ -103,11 +106,10 @@ public class InteractiveChatSession
         if (!IsActive)
             throw new InvalidOperationException("No active session. Start a new session first.");
 
-        IsProcessing = true;
+    IsProcessing = true;
+    _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageStart, CurrentSession!.Id));
         try
         {
-            await Task.Yield();
-            await Task.Delay(1, cancellationToken);
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
             var userMessage = Message.Create(
@@ -127,6 +129,7 @@ public class InteractiveChatSession
         finally
         {
             IsProcessing = false;
+            _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageComplete, CurrentSession?.Id, IsFinal: true));
         }
     }
 
@@ -204,13 +207,10 @@ public class InteractiveChatSession
         if (!IsActive)
             throw new InvalidOperationException("No active session. Start a new session first.");
 
-        IsProcessing = true;
+    IsProcessing = true;
+    _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageStart, CurrentSession!.Id));
         try
         {
-            // Yield control to surface IsProcessing state to observers before intensive work.
-            await Task.Yield();
-            // Small delay to make IsProcessing reliably observable in fast unit tests
-            await Task.Delay(1, cancellationToken);
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);
 
             // Create and save user message
@@ -236,6 +236,7 @@ public class InteractiveChatSession
         finally
         {
             IsProcessing = false;
+            _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageComplete, CurrentSession?.Id, IsFinal: true));
         }
     }
 
@@ -252,6 +253,7 @@ public class InteractiveChatSession
         {
             iteration++;
             ToolIteration = iteration;
+            _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationStart, CurrentSession!.Id, iteration));
             _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
                 iteration, _options.MaxToolCallIterations);
             
@@ -292,6 +294,10 @@ public class InteractiveChatSession
                     EstimatedCost = chunk.Usage?.EstimatedCost
                 };
 
+                if (!string.IsNullOrEmpty(chunk.Content))
+                {
+                    _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.StreamDelta, CurrentSession!.Id, ToolIteration, chunk.Content, chunk.IsComplete));
+                }
                 yield return compatibleChunk;
 
                 if (chunk.IsComplete && chunk.Usage != null)
@@ -327,6 +333,7 @@ public class InteractiveChatSession
             if (toolCalls.Count == 0)
             {
                 ToolIteration = 0; // final response reached
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationEnd, CurrentSession!.Id, iteration));
                 yield break;
             }
 
@@ -350,6 +357,7 @@ public class InteractiveChatSession
             var toolResultMessage = AIResponseProcessor.CreateToolResultsMessage(CurrentSession.Id, toolResultParts);
             await _messageService.CreateAsync(toolResultMessage, cancellationToken).ConfigureAwait(false);
             currentMessages.Add(toolResultMessage);
+            _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationEnd, CurrentSession!.Id, iteration));
         }
 
         // Handle case where we hit max iterations without a final response
@@ -373,6 +381,10 @@ public class InteractiveChatSession
             };
         }
         ToolIteration = 0; // reset after loop
+        if (iteration >= _options.MaxToolCallIterations)
+        {
+            _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopExceeded, CurrentSession?.Id, iteration));
+        }
     }
 
     /// <summary>
@@ -395,5 +407,6 @@ public class InteractiveChatSession
         _logger.LogInformation("Clearing current session");
         CurrentSession = null;
         IsProcessing = false;
+    _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.SessionCleared));
     }
 }
