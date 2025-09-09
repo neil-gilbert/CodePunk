@@ -15,6 +15,13 @@ namespace CodePunk.Console.Commands;
 
 internal static class RootCommandFactory
 {
+    private const int MaxTitleLength = 80;
+    private static string TrimTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return title;
+        var trimmed = title.Trim();
+        return trimmed.Length > MaxTitleLength ? trimmed[..MaxTitleLength] : trimmed;
+    }
     public static RootCommand Create(IServiceProvider services)
     {
     var root = new RootCommand("CodePunk CLI")
@@ -79,13 +86,14 @@ internal static class RootCommandFactory
                     }
                 }
                 services.GetRequiredService<InteractiveChatSession>().UpdateDefaults(providerOverride, modelOverride);
+                var resolvedModelForStore = modelOverride ?? (string.IsNullOrWhiteSpace(model) ? null : model);
                 if (string.IsNullOrWhiteSpace(sessionId))
                 {
-                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, model);
+                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, resolvedModelForStore);
                 }
                 else if (await sessionStore.GetAsync(sessionId) == null)
                 {
-                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, model);
+                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, resolvedModelForStore);
                 }
                 await sessionStore.AppendMessageAsync(sessionId, "user", message);
                 var response = await chatLoop.RunSingleAsync(message);
@@ -364,9 +372,4 @@ internal static class RootCommandFactory
         return cmd;
     }
 
-    private static string TrimTitle(string input)
-    {
-        var oneLine = input.Replace("\n", " ").Trim();
-        return oneLine.Length <= 60 ? oneLine : oneLine[..60];
-    }
 }
