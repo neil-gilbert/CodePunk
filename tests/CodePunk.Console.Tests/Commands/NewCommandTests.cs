@@ -12,8 +12,9 @@ public class NewCommandTests
         var cmd = new NewCommand();
         var longWords = new string('a', 50) + " " + new string('b', 50); // 101 chars with space
         var result = await cmd.ExecuteAsync(new[]{ longWords });
-    Assert.Contains(new string('a', 50), result.Message!); // first segment retained
-        Assert.True(result.Message.Length < 140); // trimmed to <=80 plus markup
+        Assert.NotNull(result.Message);
+        Assert.Contains(new string('a', 50), result.Message); // first segment retained
+        Assert.True(result.Message!.Length < 140); // trimmed to <=80 plus markup
     }
 
     [Fact]
