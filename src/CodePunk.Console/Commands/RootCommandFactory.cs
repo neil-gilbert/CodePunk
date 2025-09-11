@@ -10,6 +10,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Services;
 using CodePunk.Console.Themes;
+using CodePunk.Console.Planning;
 
 namespace CodePunk.Console.Commands;
 
@@ -90,7 +91,8 @@ internal static class RootCommandFactory
             {
                 existing.AfterContent = afterContent;
                 existing.HashAfter = PlanFileStore.Sha256(afterContent);
-                existing.Diff = DiffBuilder.Unified(beforeContent, afterContent, path, path);
+                // Generate a unified diff (default context)
+                existing.Diff = DiffBuilder.Unified(beforeContent, afterContent, path);
             }
             await store.SaveAsync(rec);
             console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {(afterContent!=null?"with after version":"(before snapshot only)")}");

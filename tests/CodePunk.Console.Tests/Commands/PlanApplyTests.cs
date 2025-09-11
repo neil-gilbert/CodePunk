@@ -1,6 +1,8 @@
 using System.CommandLine;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Stores;
+using CodePunk.Console.Configuration;
+using CodePunk.Infrastructure.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
