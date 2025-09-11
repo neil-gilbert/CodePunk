@@ -13,6 +13,9 @@ internal static class ConfigPaths
     public static string AgentsDirectory => Path.Combine(BaseConfigDirectory, "agents");
     public static string SessionsDirectory => Path.Combine(BaseConfigDirectory, "sessions");
     public static string SessionsIndexFile => Path.Combine(SessionsDirectory, "index.json");
+    public static string PlansDirectory => Path.Combine(BaseConfigDirectory, "plans");
+    public static string PlansIndexFile => Path.Combine(PlansDirectory, "index.json");
+    public static string PlanBackupsDirectory => Path.Combine(PlansDirectory, "backups");
 
     private static string ResolveBaseConfigDir()
     {
@@ -41,5 +44,7 @@ internal static class ConfigPaths
         Directory.CreateDirectory(BaseConfigDirectory);
         Directory.CreateDirectory(AgentsDirectory);
         Directory.CreateDirectory(SessionsDirectory);
+    Directory.CreateDirectory(PlansDirectory);
+    Directory.CreateDirectory(PlanBackupsDirectory);
     }
 }

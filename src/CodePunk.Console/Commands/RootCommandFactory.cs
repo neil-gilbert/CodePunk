@@ -30,7 +30,8 @@ internal static class RootCommandFactory
             BuildAuth(services),
             BuildAgent(services),
             BuildModels(services),
-            BuildSessions(services)
+            BuildSessions(services),
+            BuildPlan(services)
         };
         root.SetHandler(async () =>
         {
@@ -38,6 +39,192 @@ internal static class RootCommandFactory
             await loop.RunAsync();
         });
         return root;
+    }
+
+    private static Command BuildPlan(IServiceProvider services)
+    {
+        var plan = new Command("plan", "Generate and inspect change plans");
+        var create = new Command("create", "Create a new empty plan record (AI generation TBD)");
+        var goalOpt = new Option<string>("--goal") { IsRequired = true };
+        create.AddOption(goalOpt);
+        create.SetHandler(async (string goal) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.create", ActivityKind.Client);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var id = await store.CreateAsync(goal);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)}");
+        }, goalOpt);
+        // plan add --id <planId> --path <file> [--after-file <candidateNewFile>] [--rationale <text>]
+        var add = new Command("add", "Add (stage) a file change to a plan (optionally provide an after version)");
+        var addIdOpt = new Option<string>("--id") { IsRequired = true };
+        var addPathOpt = new Option<string>("--path") { IsRequired = true };
+        var addAfterFileOpt = new Option<string>("--after-file", () => string.Empty, "Path containing proposed new content (file stays untouched until apply)");
+        var addRationaleOpt = new Option<string>("--rationale", () => string.Empty, "Reason for the change");
+        add.AddOption(addIdOpt); add.AddOption(addPathOpt); add.AddOption(addAfterFileOpt); add.AddOption(addRationaleOpt);
+        add.SetHandler(async (string id, string path, string afterFile, string rationale) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.add", ActivityKind.Client);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var rec = await store.GetAsync(id);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
+            if (!File.Exists(path)) { console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return; }
+            var beforeContent = await File.ReadAllTextAsync(path);
+            string? afterContent = null;
+            if (!string.IsNullOrWhiteSpace(afterFile))
+            {
+                if (!File.Exists(afterFile)) { console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
+                afterContent = await File.ReadAllTextAsync(afterFile);
+            }
+            var existing = rec.Files.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
+            {
+                existing = new PlanFileChange { Path = path };
+                rec.Files.Add(existing);
+            }
+            existing.BeforeContent = beforeContent;
+            existing.HashBefore = PlanFileStore.Sha256(beforeContent);
+            existing.Rationale = string.IsNullOrWhiteSpace(rationale) ? existing.Rationale : rationale;
+            if (afterContent != null)
+            {
+                existing.AfterContent = afterContent;
+                existing.HashAfter = PlanFileStore.Sha256(afterContent);
+                existing.Diff = DiffBuilder.Unified(beforeContent, afterContent, path, path);
+            }
+            await store.SaveAsync(rec);
+            console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {(afterContent!=null?"with after version":"(before snapshot only)")}");
+        }, addIdOpt, addPathOpt, addAfterFileOpt, addRationaleOpt);
+        var list = new Command("list", "List recent plans");
+        var takeOpt = new Option<int>("--take", () => 20);
+        var jsonOpt = new Option<bool>("--json");
+        list.AddOption(takeOpt); list.AddOption(jsonOpt);
+        list.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.list", ActivityKind.Client);
+            var take = ctx.ParseResult.GetValueForOption(takeOpt);
+            var json = ctx.ParseResult.GetValueForOption(jsonOpt);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var items = await store.ListAsync(take);
+            var writer = ctx.Console.Out;
+            if (json)
+            {
+                var jsonOut = System.Text.Json.JsonSerializer.Serialize(items, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                writer.Write(jsonOut + "\n"); return;
+            }
+            var console = services.GetService<IAnsiConsole>();
+            if (items.Count == 0) { writer.Write("No plans found\n"); console?.MarkupLine(ConsoleStyles.Warn("No plans found.")); return; }
+            var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Plans"));
+            table.AddColumn("Id").AddColumn("Created").AddColumn("Goal");
+            foreach (var p in items)
+            {
+                var shortId = p.Id.Length>10? p.Id[..10]+"…":p.Id;
+                table.AddRow(ConsoleStyles.Accent(shortId), p.CreatedUtc.ToString("u"), p.Goal);
+                writer.Write(p.Id+"\t"+p.Goal+"\n");
+            }
+            console?.Write(table);
+        });
+        var show = new Command("show", "Show a plan JSON");
+        var idOpt = new Option<string>("--id") { IsRequired = true };
+        show.AddOption(idOpt);
+        show.SetHandler( async (string id) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.show", ActivityKind.Client);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var rec = await store.GetAsync(id);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
+            var json = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            console.Write(new Panel(new Markup(ConsoleStyles.Escape(json))).Header(ConsoleStyles.PanelTitle(id)).RoundedBorder());
+        }, idOpt);
+        plan.AddCommand(create); plan.AddCommand(list); plan.AddCommand(show);
+    var diff = new Command("diff", "Show unified diffs for a plan");
+    var diffIdOpt = new Option<string>("--id") { IsRequired = true };
+    var diffJsonOpt = new Option<bool>("--json");
+    diff.AddOption(diffIdOpt); diff.AddOption(diffJsonOpt);
+    diff.SetHandler(async (string id, bool json) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.diff", ActivityKind.Client);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var rec = await store.GetAsync(id);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
+            if (json)
+            {
+                var jsonOut = System.Text.Json.JsonSerializer.Serialize(rec.Files.Select(f => new { f.Path, f.Diff }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                console.WriteLine(jsonOut);
+                return;
+            }
+            if (rec.Files.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("Plan has no file changes.")); return; }
+            foreach (var f in rec.Files)
+            {
+                if (!string.IsNullOrWhiteSpace(f.Diff))
+                {
+                    console.Write(new Panel(new Markup("[silver]"+ConsoleStyles.Escape(f.Diff)+"[/]")).Header(ConsoleStyles.PanelTitle(f.Path)).RoundedBorder());
+                }
+            }
+    }, diffIdOpt, diffJsonOpt);
+    var apply = new Command("apply", "Apply a plan's changes (creates backups and checks drift)");
+        var applyIdOpt = new Option<string>("--id") { IsRequired = true };
+        var dryRunOpt = new Option<bool>("--dry-run", () => false);
+        var forceOpt = new Option<bool>("--force", () => false, "Apply even if drift detected");
+        apply.AddOption(applyIdOpt); apply.AddOption(dryRunOpt); apply.AddOption(forceOpt);
+        apply.SetHandler(async (string id, bool dryRun, bool force) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.apply", ActivityKind.Client);
+            var store = services.GetRequiredService<IPlanFileStore>();
+            var rec = await store.GetAsync(id);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
+            if (rec.Files.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("No changes to apply.")); return; }
+            int applied = 0; int skipped = 0; int drift = 0;
+            var backupRoot = Path.Combine(ConfigPaths.PlanBackupsDirectory, id + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+            if (!dryRun) Directory.CreateDirectory(backupRoot);
+            foreach (var f in rec.Files)
+            {
+                if (f.AfterContent == null) { skipped++; continue; }
+                if (!string.IsNullOrWhiteSpace(f.HashBefore) && File.Exists(f.Path))
+                {
+                    try
+                    {
+                        var current = await File.ReadAllTextAsync(f.Path);
+                        var currHash = PlanFileStore.Sha256(current);
+                        if (!string.Equals(currHash, f.HashBefore, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!force)
+                            {
+                                drift++; skipped++; continue;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                if (dryRun) { applied++; continue; }
+                try
+                {
+                    var dir = Path.GetDirectoryName(f.Path);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    if (!dryRun && File.Exists(f.Path))
+                    {
+                        try
+                        {
+                            var rel = Path.GetFileName(f.Path);
+                            var backupPath = Path.Combine(backupRoot, rel!);
+                            File.Copy(f.Path, backupPath, overwrite: true);
+                        }
+                        catch { }
+                    }
+                    File.WriteAllText(f.Path, f.AfterContent);
+                    applied++;
+                }
+                catch { skipped++; }
+            }
+            var driftNote = drift>0? $", drift {drift}" : string.Empty;
+            console.MarkupLine($"Applied {ConsoleStyles.Accent(applied.ToString())} changes (skipped {skipped}{driftNote}).");
+            if (drift>0 && !force) console.MarkupLine(ConsoleStyles.Warn("Drift detected; rerun with --force to override."));
+        }, applyIdOpt, dryRunOpt, forceOpt);
+        plan.AddCommand(add); plan.AddCommand(diff); plan.AddCommand(apply);
+        return plan;
     }
 
     private static Command BuildRun(IServiceProvider services)

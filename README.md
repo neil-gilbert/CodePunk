@@ -220,7 +220,7 @@ CodePunk is open source and welcomes contributions from engineers working in any
 git clone https://github.com/neil-gilbert/CodePunk.git
 cd CodePunk
 dotnet restore
-dotnet test  # Ensure tests pass (current: 134 passing, 1 skipped)
+dotnet test  # Ensure tests pass (current: 139 passing, 1 skipped)
 ```
 
 ## 🧭 CLI Command Reference
@@ -241,6 +241,12 @@ Current top-level commands (invoke with `codepunk <command>` or `dotnet run --pr
 | `sessions list` | List recent sessions (table or JSON) | `--take <n>`, `--json` |
 | `sessions show` | Show a session transcript | `--id <sessionId>`, `--json` |
 | `sessions load` | Mark a session as the active context (prints status) | `--id <sessionId>` |
+| `plan create` | Create a new plan | `--goal <text>` |
+| `plan list` | List recent plans | `--take <n>`, `--json` |
+| `plan show` | Show full plan JSON | `--id <planId>` |
+| `plan add` | Stage file change (before + optional after) | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>]` |
+| `plan diff` | Show unified diffs for staged changes | `--id <planId> [--json]` |
+| `plan apply` | Apply changes (drift-safe) | `--id <planId> [--dry-run] [--force]` |
 
 Invoking with no command launches the interactive chat loop.
 
@@ -278,6 +284,8 @@ Files & directories:
 | `agents/` | Agent definition JSON files |
 | `sessions/` | Individual session transcripts |
 | `sessions/index.json` | Session metadata index (recency sorting) |
+| `plans/` | Plan JSON documents |
+| `plans/index.json` | Plan definitions index |
 
 ### Recent Internal Changes
 
@@ -289,6 +297,7 @@ Files & directories:
 - Stabilized processing state tests with temporary async yield + minimal delay (will evolve to event-driven model).
 - Added sessions root CLI (`sessions list|show|load`) with JSON output for automation.
 - Added models command JSON output and `--available-only` flag (filters to providers with stored API keys).
+- Introduced plan subsystem (create/list/show/add/diff/apply) with staging, unified diffs, drift detection (`plan apply --force` to override) and dry-run support.
 
 See `ROADMAP.md` for upcoming enhancements (model listing, provider extensions, improved tool system).
 
