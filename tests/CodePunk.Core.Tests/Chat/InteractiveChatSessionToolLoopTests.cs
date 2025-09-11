@@ -67,9 +67,10 @@ public class InteractiveChatSessionToolLoopTests
             {
                 iteration++;
                 var chosen = iteration == 1 ? firstAiChunks : secondAiChunks;
-                IAsyncEnumerable<LLMStreamChunk> Stream()
+                async IAsyncEnumerable<LLMStreamChunk> Stream()
                 {
-                    foreach (var c in chosen) yield return c;            
+                    foreach (var c in chosen) yield return c;
+                    await Task.CompletedTask; // ensure async iterator compliance
                 }
                 return Stream();
             });

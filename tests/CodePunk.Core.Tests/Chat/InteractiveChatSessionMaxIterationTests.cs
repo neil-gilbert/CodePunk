@@ -58,9 +58,11 @@ public class InteractiveChatSessionMaxIterationTests
 		_llmService.Setup(l => l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
 			.Returns((IList<Message> _, CancellationToken __) =>
 			{
-				IAsyncEnumerable<LLMStreamChunk> Stream()
+				async IAsyncEnumerable<LLMStreamChunk> Stream()
 				{
+					// ensure async state machine (compiler requires 'async' for IAsyncEnumerable with yield)
 					yield return toolCallChunk;
+					await Task.CompletedTask; // keep method async even with single chunk
 				}
 				return Stream();
 			});
