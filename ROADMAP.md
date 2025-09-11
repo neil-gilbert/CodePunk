@@ -3,24 +3,24 @@
 Status legend: ✅ done · 🔄 in-progress · ⏳ planned · 🧪 needs tests · 🧹 refactor · ❗ open decision
 
 ## 1. CLI & UX
-- ⏳ Enhance `models` command: enumerate real models from providers (OpenAI / Anthropic) instead of placeholder
-- ⏳ Add `--json` output option for `run`, `auth list`, `agent list`, `models`
-- ⏳ Graceful error when no providers / API keys configured (clear guidance to run `codepunk auth login`)
+- ✅ Enhance `models` command: enumerate real models (dynamic fetch + fallback) & show key presence (9 Sep 2025)
+- 🧪 Add `--json` output option for `run`, `auth list`, `agent list` (partial: `models` already supports) 
+- ✅ Graceful error when no providers / API keys configured (guidance message implemented)
 - ⏳ Root-level `sessions` management (list, show, load) mirrored from interactive commands
 - ⏳ Add `--provider` / `--model` flags to `run` that override agent defaults (already partially supported internally, needs docs & tests)
 - ⏳ Interactive: command autocompletion (tab) & history persistence
 
 ## 2. Chat / Session Core
-- 🔄 Temporary timing fix uses `Task.Delay(1)` to surface `IsProcessing`; replace with event-based or `IProgress` notification (remove artificial delay)
+- ✅ Replaced artificial `Task.Delay(1)` with channel-based event stream (MessageStart/Complete, ToolIteration*, StreamDelta) (9 Sep 2025)
 - ⏳ Session pruning / archive strategy (size limits, rotation)
 - ⏳ Export session to markdown / JSON command
 - ⏳ Import session from JSON file
 
 ## 3. Providers & Models
-- ⏳ Azure OpenAI provider implementation
+- 🧪 Azure OpenAI provider implementation (pending)
 - ⏳ Local model provider(s): Ollama + LM Studio
 - ⏳ Dynamic provider discovery via configuration section scanning
-- ⏳ Model capability metadata (max tokens, supports tools, streaming) exposed to UX
+- ✅ Model capability metadata surfaced (context/max/tools/streaming columns + JSON) (9 Sep 2025)
 
 ## 4. Tooling System
 - ⏳ Add file search / grep tool (fast code reference)
@@ -50,17 +50,18 @@ Status legend: ✅ done · 🔄 in-progress · ⏳ planned · 🧪 needs tests �
 
 ## 9. Testing Strategy
 - ✅ Added DI resolution test for interactive loop & renderer
-- 🔄 Need scenario tests:
-  - 🧪 `run` command: new session creation, `--continue`, `--session`, conflict of `--continue` + `--session`
+- ✅ Models command auth state tests (hasKey, filter, JSON hasKey) (9 Sep 2025)
+- ✅ Event stream ordering & streaming delta tests (9 Sep 2025)
+- 🔄 Remaining scenario tests:
+  - 🧪 `run` command: new session creation, `--continue`, `--session`, conflict handling
   - 🧪 Agent override precedence (agent model vs `--model` flag)
-  - 🧪 Models command output with authenticated vs unauthenticated state
-  - 🧪 Auth / Agent command round-trip snapshot (create/list/show/delete)
-  - 🧪 Root invocation with no args enters interactive mode (detect via injected test console abstraction)
+  - 🧪 Auth / Agent round-trip snapshot
+  - 🧪 Root invocation no-args interactive detection
 - ⏳ Provider missing key error path tests
 - ⏳ Performance regression micro-benchmarks (streaming throughput)
 
 ## 10. Refactors / Tech Debt
-- 🧹 Extract Program.cs service registrations into `AddCodePunkConsole()` extension
+- ✅ Extracted Program.cs service registrations into `AddCodePunkConsole()` extension (9 Sep 2025)
 - 🧹 Introduce `IInteractiveChatLoop` interface (simplify mocking / test harness)
 - 🧹 Collapse duplicated test host bootstrapping into shared factory
 - 🧹 Consolidate file store persistence patterns (tmp + atomic move) into utility
@@ -90,14 +91,15 @@ Status legend: ✅ done · 🔄 in-progress · ⏳ planned · 🧪 needs tests �
 ---
 
 ### Immediate Next Sprint Candidates
-1. Replace `Task.Delay(1)` with event-driven processing state (Chat session stabilization)
-2. Real model listing + provider key validation in `models` command
-3. `run` command scenario & conflict tests
-4. Auth / Agent snapshot tests
-5. Refactor DI registrations into extension method
+1. `run` command scenario & conflict tests
+2. Agent override precedence tests
+3. Auth / Agent snapshot tests
+4. Config paths command
+5. Provider missing key error tests & Azure OpenAI provider spike
 
 ### Notes
-- Current test stats: 93 total (92 passing, 1 skipped) after DI / renderer registration fix.
+- Current test stats: 108 total (107 passing, 1 skipped) after event stream + models + DI refactor.
 - Temporary heuristics: token estimation via char/4; upgrade to tokenizer libs later.
+- Channel event stream now source of truth for processing state; future UI can subscribe.
 
 Feel free to append inline decisions or sign off on completed items using initials + date.

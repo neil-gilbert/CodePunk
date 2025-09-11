@@ -15,6 +15,13 @@ namespace CodePunk.Console.Commands;
 
 internal static class RootCommandFactory
 {
+    private const int MaxTitleLength = 80;
+    private static string TrimTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return title;
+        var trimmed = title.Trim();
+        return trimmed.Length > MaxTitleLength ? trimmed[..MaxTitleLength] : trimmed;
+    }
     public static RootCommand Create(IServiceProvider services)
     {
     var root = new RootCommand("CodePunk CLI")
@@ -79,13 +86,14 @@ internal static class RootCommandFactory
                     }
                 }
                 services.GetRequiredService<InteractiveChatSession>().UpdateDefaults(providerOverride, modelOverride);
+                var resolvedModelForStore = modelOverride ?? (string.IsNullOrWhiteSpace(model) ? null : model);
                 if (string.IsNullOrWhiteSpace(sessionId))
                 {
-                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, model);
+                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, resolvedModelForStore);
                 }
                 else if (await sessionStore.GetAsync(sessionId) == null)
                 {
-                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, model);
+                    sessionId = await sessionStore.CreateAsync(TrimTitle(message), agent, resolvedModelForStore);
                 }
                 await sessionStore.AppendMessageAsync(sessionId, "user", message);
                 var response = await chatLoop.RunSingleAsync(message);
@@ -239,17 +247,23 @@ internal static class RootCommandFactory
     private static Command BuildModels(IServiceProvider services)
     {
         var jsonOpt = new Option<bool>("--json", "Output JSON");
-        var cmd = new Command("models", "List available models from configured providers") { jsonOpt };
+        var availableOnlyOpt = new Option<bool>("--available-only", "Show only providers with stored API keys");
+        var cmd = new Command("models", "List available models from configured providers") { jsonOpt, availableOnlyOpt };
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
             try
             {
                 var json = ctx.ParseResult.GetValueForOption(jsonOpt);
+                var availableOnly = ctx.ParseResult.GetValueForOption(availableOnlyOpt);
                 var llm = services.GetRequiredService<ILLMService>();
                 var providers = llm.GetProviders() ?? Array.Empty<ILLMProvider>();
-                var rows = new List<(string Provider,string Id,string Name,int Context,int MaxTokens,bool Tools,bool Streaming)>();
+                var authStore = services.GetRequiredService<IAuthStore>();
+                var authenticated = (await authStore.LoadAsync()).Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var rows = new List<(string Provider,string Id,string Name,int Context,int MaxTokens,bool Tools,bool Streaming,bool HasKey)>();
                 foreach (var p in providers.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
                 {
+                    var hasKey = authenticated.Contains(p.Name) || authenticated.Contains(p.Name.Replace("Provider","", StringComparison.OrdinalIgnoreCase));
+                    if (availableOnly && !hasKey) continue;
                     IReadOnlyList<CodePunk.Core.Abstractions.LLMModel> remote = Array.Empty<CodePunk.Core.Abstractions.LLMModel>();
                     try
                     {
@@ -259,12 +273,12 @@ internal static class RootCommandFactory
 
                     var models = (remote != null && remote.Count > 0) ? remote : p.Models;
                     foreach (var m in models.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
-                        rows.Add((p.Name, m.Id, m.Name, m.ContextWindow, m.MaxTokens, m.SupportsTools, m.SupportsStreaming));
+                        rows.Add((p.Name, m.Id, m.Name, m.ContextWindow, m.MaxTokens, m.SupportsTools, m.SupportsStreaming, hasKey));
                 }
                 var writer = ctx.Console.Out;
                 if (json)
                 {
-                    var jsonOut = System.Text.Json.JsonSerializer.Serialize(rows.Select(r => new { provider = r.Provider, id = r.Id, name = r.Name, context = r.Context, maxTokens = r.MaxTokens, tools = r.Tools, streaming = r.Streaming }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    var jsonOut = System.Text.Json.JsonSerializer.Serialize(rows.Select(r => new { provider = r.Provider, id = r.Id, name = r.Name, context = r.Context, maxTokens = r.MaxTokens, tools = r.Tools, streaming = r.Streaming, hasKey = r.HasKey }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                     writer.Write(jsonOut + "\n");
                     return;
                 }
@@ -290,9 +304,11 @@ internal static class RootCommandFactory
                 table.AddColumn(new TableColumn("Max").Centered());
                 table.AddColumn(new TableColumn("Tools").Centered());
                 table.AddColumn(new TableColumn("Stream").Centered());
+                table.AddColumn(new TableColumn("Key").Centered());
                 foreach (var r in rows)
                 {
-                    table.AddRow(ConsoleStyles.Accent(r.Provider), r.Id, r.Name, r.Context.ToString(), r.MaxTokens.ToString(), r.Tools?"[green]✓[/]":"[grey]-[/]", r.Streaming?"[green]✓[/]":"[grey]-[/]");
+                    var providerLabel = r.HasKey ? ConsoleStyles.Accent(r.Provider) : $"[grey]{r.Provider}[/]";
+                    table.AddRow(providerLabel, r.Id, r.Name, r.Context.ToString(), r.MaxTokens.ToString(), r.Tools?"[green]✓[/]":"[grey]-[/]", r.Streaming?"[green]✓[/]":"[grey]-[/]", r.HasKey?"[green]✓[/]":"[red]✗[/]");
                     writer.Write($"{r.Provider}\t{r.Id}\t{r.Name}\n");
                 }
                 console?.Write(table);
@@ -356,9 +372,4 @@ internal static class RootCommandFactory
         return cmd;
     }
 
-    private static string TrimTitle(string input)
-    {
-        var oneLine = input.Replace("\n", " ").Trim();
-        return oneLine.Length <= 60 ? oneLine : oneLine[..60];
-    }
 }

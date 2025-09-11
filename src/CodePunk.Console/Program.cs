@@ -1,6 +1,7 @@
 using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
+using CodePunk.Console.Configuration;
 using CodePunk.Console.Stores;
 using CodePunk.Infrastructure.Configuration;
 using CodePunk.Console.Themes;
@@ -46,25 +47,7 @@ builder.Services.AddOpenTelemetry().WithTracing(tp =>
 
 builder.Services.AddCodePunkServices(builder.Configuration);
 
-builder.Services.AddSingleton<IAnsiConsole>(Spectre.Console.AnsiConsole.Console);
-builder.Services.AddSingleton<IAuthStore, AuthFileStore>();
-builder.Services.AddSingleton<IAgentStore, AgentFileStore>();
-builder.Services.AddSingleton<ISessionFileStore, SessionFileStore>();
-
-builder.Services.AddScoped<InteractiveChatLoop>();
-builder.Services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });
-builder.Services.AddSingleton<StreamingResponseRenderer>();
-
-builder.Services.AddTransient<ChatCommand, HelpCommand>();
-builder.Services.AddTransient<ChatCommand, NewCommand>();
-builder.Services.AddTransient<ChatCommand, QuitCommand>();
-builder.Services.AddTransient<ChatCommand, ClearCommand>();
-builder.Services.AddTransient<ChatCommand, SessionsCommand>();
-builder.Services.AddTransient<ChatCommand, LoadCommand>();
-builder.Services.AddTransient<ChatCommand, UseCommand>();
-builder.Services.AddTransient<ChatCommand, UsageCommand>();
-builder.Services.AddTransient<ChatCommand, ModelsChatCommand>();
-builder.Services.AddSingleton<CommandProcessor>();
+builder.Services.AddCodePunkConsole();
 
 var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();

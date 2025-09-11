@@ -17,7 +17,7 @@ public class UsageCommandTests
         var llmService = new Mock<ILLMService>();
         var toolService = new Mock<IToolService>();
         var logger = new Mock<ILogger<InteractiveChatSession>>();
-        var s = new InteractiveChatSession(sessionService.Object, messageService.Object, llmService.Object, toolService.Object, logger.Object);
+    var s = new InteractiveChatSession(sessionService.Object, messageService.Object, llmService.Object, toolService.Object, logger.Object, new ChatSessionEventStream());
         // Fake an active session
         var session = CodePunk.Core.Models.Session.Create("Test");
         s.GetType().GetProperty("CurrentSession")!.SetValue(s, session);
@@ -45,7 +45,7 @@ public class UsageCommandTests
         var llmService = new Mock<ILLMService>();
         var toolService = new Mock<IToolService>();
         var logger = new Mock<ILogger<InteractiveChatSession>>();
-        var s = new InteractiveChatSession(sessionService.Object, messageService.Object, llmService.Object, toolService.Object, logger.Object);
+    var s = new InteractiveChatSession(sessionService.Object, messageService.Object, llmService.Object, toolService.Object, logger.Object, new ChatSessionEventStream());
         var cmd = new UsageCommand(s);
         var result = await cmd.ExecuteAsync(Array.Empty<string>());
         Assert.False(result.Success);

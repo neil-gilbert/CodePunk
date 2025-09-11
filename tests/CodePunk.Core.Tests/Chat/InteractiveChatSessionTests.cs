@@ -2,6 +2,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
+using System.Threading.Channels;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -14,6 +15,7 @@ public class InteractiveChatSessionTests : IDisposable
     private readonly Mock<ISessionService> _mockSessionService;
     private readonly Mock<IMessageService> _mockMessageService;
     private readonly Mock<ILLMService> _mockLLMService;
+    private readonly ChatSessionEventStream _eventStream;
     private readonly InteractiveChatSession _chatSession;
 
     public InteractiveChatSessionTests()
@@ -23,12 +25,14 @@ public class InteractiveChatSessionTests : IDisposable
         _mockLLMService = new Mock<ILLMService>();
         var mockToolService = new Mock<IToolService>();
         
+        _eventStream = new ChatSessionEventStream();
         _chatSession = new InteractiveChatSession(
             _mockSessionService.Object,
             _mockMessageService.Object,
             _mockLLMService.Object,
             mockToolService.Object,
-            NullLogger<InteractiveChatSession>.Instance);
+            NullLogger<InteractiveChatSession>.Instance,
+            _eventStream);
     }
 
     [Fact]
@@ -321,6 +325,74 @@ public class InteractiveChatSessionTests : IDisposable
 
         // Assert
         processingStates.Should().ContainSingle().Which.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ShouldEmit_MessageStart_Then_MessageComplete()
+    {
+        await SetupActiveSessionAsync();
+        var chunks = new[]{ new LLMStreamChunk { Content = "Hi", IsComplete = true } };
+        _mockMessageService.Setup(m=>m.CreateAsync(It.IsAny<Message>(), It.IsAny<CancellationToken>())).ReturnsAsync((Message m, CancellationToken _) => m);
+        _mockMessageService.Setup(m=>m.GetBySessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<Message>());
+        _mockLLMService.Setup(l=>l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>())).Returns(chunks.ToAsyncEnumerable());
+
+        var read = CollectEventsAsync(_eventStream.Reader, count:2, timeout:TimeSpan.FromSeconds(2));
+        var _ = await _chatSession.SendMessageAsync("Hello");
+        var events = await read;
+        events.Should().HaveCountGreaterOrEqualTo(2);
+        events[0].Type.Should().Be(ChatSessionEventType.MessageStart);
+        events.Last().Type.Should().Be(ChatSessionEventType.MessageComplete);
+    }
+
+    [Fact]
+    public async Task SendMessageStreamAsync_ShouldEmit_StreamDelta_And_ToolIterationEvents()
+    {
+        await SetupActiveSessionAsync();
+        var chunks = new[]{
+            new LLMStreamChunk { Content = "Part1", IsComplete = false },
+            new LLMStreamChunk { Content = "Part2", IsComplete = true }
+        };
+        _mockMessageService.Setup(m=>m.CreateAsync(It.IsAny<Message>(), It.IsAny<CancellationToken>())).ReturnsAsync((Message m, CancellationToken _) => m);
+        _mockMessageService.Setup(m=>m.GetBySessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<Message>());
+        _mockLLMService.Setup(l=>l.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>())).Returns(chunks.ToAsyncEnumerable());
+
+        var collected = new List<ChatSessionEvent>();
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var readerTask = Task.Run(async () => {
+            await foreach (var evt in _eventStream.Reader.ReadAllAsync(cts.Token))
+            {
+                collected.Add(evt);
+                if (evt.Type == ChatSessionEventType.MessageComplete) break;
+            }
+        });
+
+        await foreach (var _ in _chatSession.SendMessageStreamAsync("Hello")) { }
+        await readerTask;
+
+        collected.Should().Contain(e=>e.Type==ChatSessionEventType.MessageStart);
+        collected.Should().Contain(e=>e.Type==ChatSessionEventType.ToolIterationStart);
+        collected.Should().Contain(e=>e.Type==ChatSessionEventType.ToolIterationEnd);
+        collected.Count(e=>e.Type==ChatSessionEventType.StreamDelta).Should().BeGreaterOrEqualTo(2);
+        collected.Last().Type.Should().Be(ChatSessionEventType.MessageComplete);
+    }
+
+    private static async Task<List<ChatSessionEvent>> CollectEventsAsync(ChannelReader<ChatSessionEvent> reader, int count, TimeSpan timeout)
+    {
+        var list = new List<ChatSessionEvent>();
+        var cts = new CancellationTokenSource(timeout);
+        try
+        {
+            while (list.Count < count && await reader.WaitToReadAsync(cts.Token))
+            {
+                while (reader.TryRead(out var evt))
+                {
+                    list.Add(evt);
+                    if (list.Count >= count) break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        return list;
     }
 
     private async Task SetupActiveSessionAsync()

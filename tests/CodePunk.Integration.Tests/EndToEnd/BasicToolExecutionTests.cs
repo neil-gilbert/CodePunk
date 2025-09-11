@@ -23,7 +23,7 @@ public class BasicToolExecutionTests : IntegrationTestBase
         var toolService = ServiceProvider.GetRequiredService<IToolService>();
         var logger = ServiceProvider.GetRequiredService<ILogger<InteractiveChatSession>>();
 
-        var chatSession = new InteractiveChatSession(sessionService, messageService, llmService, toolService, logger);
+    var chatSession = new InteractiveChatSession(sessionService, messageService, llmService, toolService, logger, new ChatSessionEventStream());
         await chatSession.StartNewSessionAsync("Test file creation session");
 
         var filePath = $"{Guid.NewGuid()}.txt";
