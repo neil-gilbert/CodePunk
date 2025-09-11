@@ -287,6 +287,19 @@ Files & directories:
 
 See `ROADMAP.md` for upcoming enhancements (model listing, provider extensions, improved tool system).
 
+### Open Backlog Items
+
+The following technical tasks were identified but not completed in this change set:
+
+- Add Spectre.Console output capture helper for asserting error/markup content in CLI scenario tests.
+- Add test covering `ChatSessionEventType.ToolLoopExceeded` (tool loop exceeded event) in streaming and non-stream paths.
+- Consolidate `TrimTitle` logic (currently implemented separately in `NewCommand` and `RootCommandFactory`).
+- Extract a shared test host factory for Core chat unit tests (similar to `ConsoleTestHostFactory`).
+- Introduce streaming fallback test verifying max tool iteration fallback in streaming API (`SendMessageStreamAsync`).
+- Eliminate remaining analyzer warnings (e.g. nullable dereference in `NewCommandTests`, any residual async warnings).
+- Provide documentation for run command agent/model override precedence and tool iteration/fallback behavior.
+- Optional: Add quiet/diagnostic toggle to reduce console noise during test runs.
+
 ### Areas for Contribution
 - **AI Provider Integration**: Add local models, Azure OpenAI, or other providers
 - **Tool Development**: Create tools for specific languages or frameworks

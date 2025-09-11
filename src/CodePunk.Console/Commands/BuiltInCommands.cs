@@ -63,10 +63,18 @@ public class NewCommand : ChatCommand
     public override string Description => "Start a new chat session";
     public override string[] Aliases => ["n"];
 
+    private static string TrimTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return title;
+        const int max = 80;
+        var trimmed = title.Trim();
+        return trimmed.Length > max ? trimmed[..max] : trimmed;
+    }
+
     public override Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
     {
         var sessionTitle = args.Length > 0 
-            ? string.Join(" ", args)
+            ? TrimTitle(string.Join(" ", args))
             : $"Chat Session {DateTime.Now:yyyy-MM-dd HH:mm}";
     return Task.FromResult(CommandResult.ClearSession($"{ConsoleStyles.Success("✓")} New session: {ConsoleStyles.Accent(sessionTitle)}"));
     }
