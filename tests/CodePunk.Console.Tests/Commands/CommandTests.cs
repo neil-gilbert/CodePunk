@@ -13,17 +13,15 @@ public class CommandProcessorTests
 
     public CommandProcessorTests()
     {
-        var help = new HelpCommand();
-        var commands = new List<ChatCommand>
+        var commands = new ChatCommand[]
         {
-            help,
+            new HelpCommand(),
             new NewCommand(),
             new QuitCommand(),
             new ClearCommand(),
             new SessionsCommand(Mock.Of<ISessionService>(), Mock.Of<IMessageService>()),
             new LoadCommand(Mock.Of<ISessionService>())
         };
-        help.Initialize(commands);
         _commandProcessor = new CommandProcessor(commands, NullLogger<CommandProcessor>.Instance);
     }
 
@@ -124,15 +122,14 @@ public class ChatCommandTests
     public async Task HelpCommand_ShouldReturnHelpMessage()
     {
         // Arrange
-    var helpCommand = new HelpCommand();
-    helpCommand.Initialize(new List<ChatCommand>());
+        var helpCommand = new HelpCommand();
 
         // Act
         var result = await helpCommand.ExecuteAsync([]);
 
         // Assert
         result.Success.Should().BeTrue();
-    result.Message.Should().BeNull();
+        result.Message.Should().BeNull();
     }
 
     [Fact]

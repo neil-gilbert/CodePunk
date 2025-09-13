@@ -11,7 +11,7 @@ namespace CodePunk.Console.Tests.Commands;
 
 public class SessionsCommandTests
 {
-    private static async Task<(RootCommand root, IServiceProvider sp, string tmp)> BuildAsync()
+    private static Task<(RootCommand root, IServiceProvider sp, string tmp)> BuildAsync()
     {
         var tmp = Path.Combine(Path.GetTempPath(), "codepunk-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("CODEPUNK_CONFIG_HOME", tmp);
@@ -21,7 +21,7 @@ public class SessionsCommandTests
         builder.Services.AddCodePunkConsole();
         var host = builder.Build();
         var root = RootCommandFactory.Create(host.Services);
-        return (root, host.Services, tmp);
+        return Task.FromResult((root, host.Services, tmp));
     }
 
     [Fact]

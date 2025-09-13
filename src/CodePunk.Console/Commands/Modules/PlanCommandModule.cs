@@ -7,6 +7,7 @@ using CodePunk.Console.Planning;
 using CodePunk.Core.Chat;
 using CodePunk.Console.Themes;
 using CodePunk.Console.Stores;
+using CodePunk.Console.Rendering;
 
 namespace CodePunk.Console.Commands.Modules;
 
@@ -42,8 +43,7 @@ internal sealed class PlanCommandModule : ICommandModule
             if (json)
             {
                 var payload = new { schema = "plan.create.v1", planId = id, goal };
-                var jsonText = System.Text.Json.JsonSerializer.Serialize(payload, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                console.WriteLine(jsonText);
+                JsonOutput.Write(console, payload);
                 return;
             }
             console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)}");
@@ -73,19 +73,19 @@ internal sealed class PlanCommandModule : ICommandModule
             var console = services.GetRequiredService<IAnsiConsole>();
             if (rec == null)
             {
-                if (json) { console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { schema = "plan.add.v1", error = new { code = "PlanNotFound", message = "Plan not found" } })); return; }
+                if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
                 console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             if (!File.Exists(path))
             {
-                if (json) { console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { schema = "plan.add.v1", error = new { code = "FileMissing", message = $"File not found: {path}" } })); return; }
+                if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "FileMissing", message = $"File not found: {path}" } }); return; }
                 console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return;
             }
             var beforeContent = await File.ReadAllTextAsync(path);
             string? afterContent = null;
             if (!string.IsNullOrWhiteSpace(afterFile))
             {
-                if (!File.Exists(afterFile)) { if (json) { console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { schema = "plan.add.v1", error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } })); return; } console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
+                if (!File.Exists(afterFile)) { if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } }); return; } console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
                 afterContent = await File.ReadAllTextAsync(afterFile);
             }
             var existing = rec.Files.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
@@ -121,8 +121,7 @@ internal sealed class PlanCommandModule : ICommandModule
                     },
                     rationale = string.IsNullOrWhiteSpace(existing.Rationale) ? null : existing.Rationale
                 };
-                var jsonText = System.Text.Json.JsonSerializer.Serialize(dto, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                console.WriteLine(jsonText);
+                JsonOutput.Write(console, dto);
             }
             else
             {
@@ -235,12 +234,12 @@ internal sealed class PlanCommandModule : ICommandModule
             var console = services.GetRequiredService<IAnsiConsole>();
             if (rec == null)
             {
-                if (json) { console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { schema = "plan.apply.v1", error = new { code = "PlanNotFound", message = "Plan not found" } })); return; }
+                if (json) { JsonOutput.Write(console, new { schema = "plan.apply.v1", error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
                 console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             if (rec.Files.Count == 0)
             {
-                if (json) { console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { schema = "plan.apply.v1", error = new { code = "NoChanges", message = "No changes to apply" } })); return; }
+                if (json) { JsonOutput.Write(console, new { schema = "plan.apply.v1", error = new { code = "NoChanges", message = "No changes to apply" } }); return; }
                 console.MarkupLine(ConsoleStyles.Warn("No changes to apply.")); return;
             }
             int applied = 0; int skipped = 0; int drift = 0;
@@ -300,8 +299,7 @@ internal sealed class PlanCommandModule : ICommandModule
                     summary = new { applied, skipped, drift, backedUp = changes.Count(c => ((dynamic)c).backupPath != null) },
                     changes
                 };
-                var jsonText = System.Text.Json.JsonSerializer.Serialize(jsonPayload, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                console.WriteLine(jsonText);
+                JsonOutput.Write(console, jsonPayload);
             }
             else
             {

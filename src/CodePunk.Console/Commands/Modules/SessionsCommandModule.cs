@@ -69,6 +69,7 @@ internal sealed class SessionsCommandModule : ICommandModule
         {
             using var activity = Telemetry.ActivitySource.StartActivity("sessions.show", ActivityKind.Client);
             var id = ctx.ParseResult.GetValueForOption(idOpt);
+            if (string.IsNullOrWhiteSpace(id)) { ctx.Console.Out.Write("Session not found\n"); return; }
             var json = ctx.ParseResult.GetValueForOption(jsonOptShow);
             var store = services.GetRequiredService<ISessionFileStore>();
             var rec = await store.GetAsync(id);

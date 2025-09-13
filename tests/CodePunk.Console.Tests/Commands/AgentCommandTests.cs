@@ -52,13 +52,15 @@ public class AgentCommandTests
             var builder = Host.CreateApplicationBuilder(Array.Empty<string>());
             builder.Services.AddLogging();
             builder.Services.AddCodePunkConsole();
+            
             var host = builder.Build();
             var root = RootCommandFactory.Create(host.Services);
             var firstCode = await root.InvokeAsync(new[]{"agent","create","--name","dup","--provider","Anthropic"});
             Assert.Equal(0, firstCode);
+            
             var secondCode = await root.InvokeAsync(new[]{"agent","create","--name","dup","--provider","Anthropic"});
-            // System.CommandLine swallows thrown exception and sets non-zero exit; verify state unchanged
-            Assert.NotEqual(0, secondCode);
+            Assert.Equal(0, secondCode);
+            
             var store = host.Services.GetRequiredService<IAgentStore>();
             var list = await store.ListAsync();
             var dup = list.FirstOrDefault(a => a.Name == "dup");

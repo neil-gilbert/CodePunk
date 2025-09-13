@@ -31,6 +31,7 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, UseCommand>();
         services.AddTransient<ChatCommand, UsageCommand>();
         services.AddTransient<ChatCommand, ModelsChatCommand>();
+        services.AddTransient<ChatCommand, PlanChatCommand>();
         services.AddSingleton<CommandProcessor>();
         return services;
     }

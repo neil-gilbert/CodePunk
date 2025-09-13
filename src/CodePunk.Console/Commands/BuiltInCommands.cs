@@ -11,16 +11,9 @@ namespace CodePunk.Console.Commands;
 /// </summary>
 public class HelpCommand : ChatCommand
 {
-    private IReadOnlyList<ChatCommand> _all = Array.Empty<ChatCommand>();
-
     public override string Name => "help";
     public override string Description => "Shows available commands and their usage";
     public override string[] Aliases => ["h", "?"];
-
-    public void Initialize(IEnumerable<ChatCommand> all)
-    {
-        _all = all.Where(c => c != this).ToList();
-    }
 
     public override Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
     {
@@ -36,14 +29,27 @@ public class HelpCommand : ChatCommand
             .AddColumn("Description")
             .BorderColor(Color.Grey);
 
-        var commands = _all.OrderBy(c => c.Name).ToList();
-        foreach (var command in commands)
+        var commands = new[]
         {
-            var aliases = command.Aliases.Length > 0 ? string.Join(", ", command.Aliases.Select(a => $"/{a}")) : "-";
-            table.AddRow($"[cyan]/{command.Name}[/]", $"[dim]{aliases}[/]", command.Description);
-        }
+            ("/clear", new[] { "/cls" }, "Clear the console screen"),
+            ("/help", new[] { "/h", "/?" }, "Shows available commands and their usage"),
+            ("/load", new[] { "/l" }, "Load a previous chat session"),
+            ("/models", Array.Empty<string>(), "Manage AI models and providers"),
+            ("/new", new[] { "/n" }, "Start a new chat session"),
+            ("/plan", Array.Empty<string>(), "Manage change plans: /plan create | add | diff | apply"),
+            ("/quit", new[] { "/q", "/exit" }, "Exit the application"),
+            ("/sessions", new[] { "/s", "/list" }, "Show recent chat sessions"),
+            ("/usage", new[] { "/tokens" }, "Show accumulated token usage & estimated cost for current session"),
+            ("/use", new[] { "/u" }, "Set default provider and/or model")
+        };
 
-        table.AddRow("[cyan]/help[/]", "[dim]/h, /?[/]", Description);
+        string Escape(string? text) => string.IsNullOrEmpty(text) ? string.Empty : text.Replace("[", "[[").Replace("]", "]]");
+        
+        foreach (var (command, aliases, description) in commands)
+        {
+            var aliasText = aliases.Length > 0 ? string.Join(", ", aliases) : "-";
+            table.AddRow($"[cyan]{command}[/]", $"[dim]{aliasText}[/]", Escape(description));
+        }
 
         console.Write(table);
         console.WriteLine();
