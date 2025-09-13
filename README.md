@@ -321,8 +321,47 @@ Inside the chat loop you can use:
 | `/load <sessionId>` | Load a prior session |
 | `/clear` | Clear current session and start fresh |
 | `/quit` | Exit the interactive loop |
+| `/plan` | Access plan subcommands inside chat (e.g. `/plan create --goal "Refactor API"`, `/plan add --id <id> --path src/Foo.cs --json`, `/plan apply --id <id> --dry-run`) |
 
 Planned (not yet implemented): `/provider <name>`, `/model <id>`, `/export <path>`, `/import <path>`.
+
+#### Using `/plan` interactively
+
+Plans allow you to stage, review, and apply file changes systematically. You can manage plans without leaving the chat loop:
+
+**Basic workflow:**
+1. **Create a plan** with a goal description
+2. **Stage files** - capture current state and optionally provide updated content 
+3. **Review changes** with unified diffs
+4. **Apply safely** with drift detection and automatic backups
+
+**Examples:**
+
+```text
+# Create a new plan for refactoring
+/plan create --goal "Refactor authentication to use dependency injection"
+
+# Stage a file with before/after changes
+/plan add --id 20250912123000-abc123 --path src/AuthService.cs --after-file AuthService.updated.cs
+
+# Review what changes will be applied
+/plan diff --id 20250912123000-abc123
+
+# Test run without making changes
+/plan apply --id 20250912123000-abc123 --dry-run
+
+# Apply changes with automatic backup
+/plan apply --id 20250912123000-abc123
+```
+
+**Key features:**
+- **Drift detection**: Won't apply if files changed since staging
+- **Automatic backups**: All original files saved before changes
+- **JSON output**: Add `--json` for automation-friendly results
+- **Dry run**: Preview changes with `--dry-run` flag
+- **Force apply**: Override drift detection with `--force`
+
+All flags and behaviors are identical to the top-level `plan` CLI group. Perfect for iterative development where you want to plan changes, discuss with AI, then apply systematically.
 
 ### Configuration Paths
 

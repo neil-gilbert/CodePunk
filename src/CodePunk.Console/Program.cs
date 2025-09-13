@@ -53,8 +53,6 @@ var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();
 
 var commandProcessor = host.Services.GetRequiredService<CommandProcessor>();
-var help = commandProcessor.GetAllCommands().OfType<HelpCommand>().FirstOrDefault();
-help?.Initialize(commandProcessor.GetAllCommands());
 
 var root = RootCommandFactory.Create(host.Services);
 

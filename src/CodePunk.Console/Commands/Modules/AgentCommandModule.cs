@@ -41,8 +41,15 @@ internal sealed class AgentCommandModule : ICommandModule
                 Model = string.IsNullOrWhiteSpace(model) ? null : model,
                 PromptFilePath = string.IsNullOrWhiteSpace(promptFile) ? null : promptFile
             };
-            await store.CreateAsync(def, overwrite);
-            console.MarkupLine($"{ConsoleStyles.Success("Agent created")} {ConsoleStyles.Accent(name)}");
+            try
+            {
+                await store.CreateAsync(def, overwrite);
+                console.MarkupLine($"{ConsoleStyles.Success("Agent created")} {ConsoleStyles.Accent(name)}");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                console.MarkupLine(ConsoleStyles.Warn($"Agent '{name}' already exists. Use --overwrite to replace."));
+            }
         }, nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt);
         var list = new Command("list", "List agents");
         list.SetHandler(async () =>

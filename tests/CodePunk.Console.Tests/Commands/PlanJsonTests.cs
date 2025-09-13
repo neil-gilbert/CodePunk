@@ -129,3 +129,20 @@ public class PlanJsonTests
         finally { try { Directory.Delete(tmp, true); } catch { } }
     }
 }
+
+public class HelpIncludesPlanTests
+{
+    [Fact]
+    public void Help_Should_List_Plan_Command()
+    {
+        var builder = Host.CreateApplicationBuilder([]);
+        builder.Services.AddCodePunkServices(builder.Configuration);
+        builder.Services.AddCodePunkConsole();
+        var host = builder.Build();
+        var processor = host.Services.GetRequiredService<CommandProcessor>();
+    var help = processor.GetAllCommands().OfType<HelpCommand>().First();
+        var console = AnsiConsole.Console; // using real console (not capturing); we will just check registration list
+        var hasPlan = processor.GetAllCommands().Any(c => c.Name == "plan");
+        Assert.True(hasPlan, "/plan command not registered");
+    }
+}

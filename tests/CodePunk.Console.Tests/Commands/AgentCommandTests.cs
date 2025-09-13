@@ -57,8 +57,8 @@ public class AgentCommandTests
             var firstCode = await root.InvokeAsync(new[]{"agent","create","--name","dup","--provider","Anthropic"});
             Assert.Equal(0, firstCode);
             var secondCode = await root.InvokeAsync(new[]{"agent","create","--name","dup","--provider","Anthropic"});
-            // System.CommandLine swallows thrown exception and sets non-zero exit; verify state unchanged
-            Assert.NotEqual(0, secondCode);
+            // Duplicate creation now results in warning but success exit code
+            Assert.Equal(0, secondCode);
             var store = host.Services.GetRequiredService<IAgentStore>();
             var list = await store.ListAsync();
             var dup = list.FirstOrDefault(a => a.Name == "dup");
