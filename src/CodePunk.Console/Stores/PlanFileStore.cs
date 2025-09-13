@@ -97,7 +97,11 @@ public class PlanFileStore : IPlanFileStore
         Directory.CreateDirectory(PlansDir);
     }
 
-    internal static string Sha256(string content)
+    /// <summary>
+    /// Compute a SHA-256 hash (hex uppercase) for provided content.
+    /// Exposed publicly for testing and external plan tooling.
+    /// </summary>
+    public static string Sha256(string content)
     {
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(content));

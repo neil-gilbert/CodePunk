@@ -20,7 +20,7 @@ internal sealed class SessionsCommandModule : ICommandModule
         var sessions = new Command("sessions", "Manage and inspect chat sessions");
         var list = new Command("list", "List recent sessions");
         var takeOpt = new Option<int>("--take", () => 20, "Limit number of sessions");
-        var jsonOpt = new Option<bool>("--json", "Emit JSON");
+        var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: sessions.list.v1)");
         list.AddOption(takeOpt); list.AddOption(jsonOpt);
         list.SetHandler(async (InvocationContext ctx) =>
         {
@@ -31,17 +31,14 @@ internal sealed class SessionsCommandModule : ICommandModule
                 var json = ctx.ParseResult.GetValueForOption(jsonOpt);
                 var store = services.GetRequiredService<ISessionFileStore>();
                 var metas = await store.ListAsync(take);
-                var writer = ctx.Console.Out;
                 if (json)
                 {
-                    var jsonOut = System.Text.Json.JsonSerializer.Serialize(metas, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                    writer.Write(jsonOut + "\n");
+                    Rendering.JsonOutput.Write(services.GetRequiredService<IAnsiConsole>(), new { schema = Rendering.Schemas.SessionsListV1, sessions = metas });
                     return;
                 }
                 var console = services.GetService<IAnsiConsole>();
                 if (metas.Count == 0)
                 {
-                    writer.Write("No sessions found.\n");
                     console?.MarkupLine(ConsoleStyles.Warn("No sessions found."));
                     return;
                 }
@@ -51,34 +48,33 @@ internal sealed class SessionsCommandModule : ICommandModule
                 {
                     var shortId = m.Id.Length > 10 ? m.Id[..10] + "…" : m.Id;
                     table.AddRow(ConsoleStyles.Accent(shortId), m.Title ?? "(untitled)", string.IsNullOrWhiteSpace(m.Agent)?"[grey]-[/]":m.Agent!, m.Model ?? "[grey](default)[/]" , m.MessageCount.ToString(), m.LastUpdatedUtc.ToString("u"));
-                    writer.Write(m.Id + "\t" + (m.Title ?? string.Empty) + "\n");
                 }
                 console?.Write(table);
             }
             catch (Exception ex)
             {
-                ctx.Console.Out.Write("sessions list error: " + ex.Message + "\n");
+                ctx.ExitCode = 1;
+                services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("sessions list error: "+ConsoleStyles.Escape(ex.Message)));
             }
             await Task.CompletedTask;
         });
         var show = new Command("show", "Show a session transcript");
         var idOpt = new Option<string>("--id") { IsRequired = true };
-        var jsonOptShow = new Option<bool>("--json", "Emit JSON");
+        var jsonOptShow = new Option<bool>("--json", "Emit JSON (schema: sessions.show.v1)");
         show.AddOption(idOpt); show.AddOption(jsonOptShow);
         show.SetHandler(async (InvocationContext ctx) =>
         {
             using var activity = Telemetry.ActivitySource.StartActivity("sessions.show", ActivityKind.Client);
             var id = ctx.ParseResult.GetValueForOption(idOpt);
-            if (string.IsNullOrWhiteSpace(id)) { ctx.Console.Out.Write("Session not found\n"); return; }
+            if (string.IsNullOrWhiteSpace(id)) { ctx.ExitCode = 1; services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
             var json = ctx.ParseResult.GetValueForOption(jsonOptShow);
             var store = services.GetRequiredService<ISessionFileStore>();
             var rec = await store.GetAsync(id);
-            var writer = ctx.Console.Out;
-            if (rec == null) { writer.Write("Session not found\n"); return; }
+            if (rec == null) { ctx.ExitCode = 0; services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
             if (json)
             {
-                var jsonOut = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                writer.Write(jsonOut + "\n"); return;
+                Rendering.JsonOutput.Write(services.GetRequiredService<IAnsiConsole>(), new { schema = Rendering.Schemas.SessionsShowV1, session = rec });
+                return;
             }
             var console = services.GetService<IAnsiConsole>();
             var panelContent = new System.Text.StringBuilder();
@@ -87,11 +83,7 @@ internal sealed class SessionsCommandModule : ICommandModule
             panelContent.AppendLine($"Agent: {rec.Metadata.Agent ?? "-"}");
             panelContent.AppendLine($"Model: {rec.Metadata.Model ?? "(default)"}");
             panelContent.AppendLine($"Messages: {rec.Messages.Count}");
-            foreach (var m in rec.Messages)
-            {
-                panelContent.AppendLine($"[{m.Role}] {m.Content.Replace("\n"," ")}");
-            }
-            writer.Write(panelContent.ToString());
+            foreach (var m in rec.Messages) panelContent.AppendLine($"[{m.Role}] {m.Content.Replace("\n"," ")}");
             console?.Write(new Panel(new Markup(ConsoleStyles.Escape(panelContent.ToString()))).Header(ConsoleStyles.PanelTitle(rec.Metadata.Title ?? rec.Metadata.Id)).RoundedBorder());
         });
         var load = new Command("load", "Load a session id for reference");
@@ -103,7 +95,11 @@ internal sealed class SessionsCommandModule : ICommandModule
             var store = services.GetRequiredService<ISessionFileStore>();
             var rec = await store.GetAsync(id);
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (rec == null) console.MarkupLine(ConsoleStyles.Error("Session not found"));
+            if (rec == null)
+            {
+                System.Environment.ExitCode = 0;
+                console.MarkupLine(ConsoleStyles.Error("Session not found"));
+            }
             else console.MarkupLine($"Loaded {ConsoleStyles.Accent(rec.Metadata.Title ?? rec.Metadata.Id)}");
         }, loadIdOpt);
         sessions.AddCommand(list); sessions.AddCommand(show); sessions.AddCommand(load);

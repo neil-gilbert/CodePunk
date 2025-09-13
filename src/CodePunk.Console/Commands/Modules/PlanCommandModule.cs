@@ -42,7 +42,7 @@ internal sealed class PlanCommandModule : ICommandModule
             var console = services.GetRequiredService<IAnsiConsole>();
             if (json)
             {
-                var payload = new { schema = "plan.create.v1", planId = id, goal };
+                var payload = new { schema = Rendering.Schemas.PlanCreateV1, planId = id, goal };
                 JsonOutput.Write(console, payload);
                 return;
             }
@@ -53,19 +53,21 @@ internal sealed class PlanCommandModule : ICommandModule
 
     private static void BuildAdd(Command plan, IServiceProvider services)
     {
-        var add = new Command("add", "Add (stage) a file change to a plan (optionally provide an after version)");
+    var add = new Command("add", "Add (stage) a file change to a plan (modify/create or delete)");
         var addIdOpt = new Option<string>("--id") { IsRequired = true };
         var addPathOpt = new Option<string>("--path") { IsRequired = true };
         var addAfterFileOpt = new Option<string>("--after-file", () => string.Empty, "Path containing proposed new content (file stays untouched until apply)");
         var addRationaleOpt = new Option<string>("--rationale", () => string.Empty, "Reason for the change");
+    var addDeleteOpt = new Option<bool>("--delete", description: "Mark file for deletion (ignores --after-file)");
         var addJsonOpt = new Option<bool>("--json");
-        add.AddOption(addIdOpt); add.AddOption(addPathOpt); add.AddOption(addAfterFileOpt); add.AddOption(addRationaleOpt); add.AddOption(addJsonOpt);
+    add.AddOption(addIdOpt); add.AddOption(addPathOpt); add.AddOption(addAfterFileOpt); add.AddOption(addRationaleOpt); add.AddOption(addDeleteOpt); add.AddOption(addJsonOpt);
         add.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
         {
             var id = ctx.ParseResult.GetValueForOption(addIdOpt)!;
             var path = ctx.ParseResult.GetValueForOption(addPathOpt)!;
             var afterFile = ctx.ParseResult.GetValueForOption(addAfterFileOpt)!;
             var rationale = ctx.ParseResult.GetValueForOption(addRationaleOpt)!;
+            var isDelete = ctx.ParseResult.GetValueForOption(addDeleteOpt);
             var json = ctx.ParseResult.GetValueForOption(addJsonOpt);
             using var activity = Telemetry.ActivitySource.StartActivity("plan.add", ActivityKind.Client);
             var store = services.GetRequiredService<IPlanFileStore>();
@@ -73,19 +75,23 @@ internal sealed class PlanCommandModule : ICommandModule
             var console = services.GetRequiredService<IAnsiConsole>();
             if (rec == null)
             {
-                if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
+                if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
                 console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
-            if (!File.Exists(path))
+            string? beforeContent = null;
+            if (!isDelete)
             {
-                if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "FileMissing", message = $"File not found: {path}" } }); return; }
-                console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return;
+                if (!File.Exists(path))
+                {
+                    if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "FileMissing", message = $"File not found: {path}" } }); return; }
+                    console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return;
+                }
+                beforeContent = await File.ReadAllTextAsync(path);
             }
-            var beforeContent = await File.ReadAllTextAsync(path);
             string? afterContent = null;
-            if (!string.IsNullOrWhiteSpace(afterFile))
+            if (!isDelete && !string.IsNullOrWhiteSpace(afterFile))
             {
-                if (!File.Exists(afterFile)) { if (json) { JsonOutput.Write(console, new { schema = "plan.add.v1", error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } }); return; } console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
+                if (!File.Exists(afterFile)) { if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } }); return; } console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
                 afterContent = await File.ReadAllTextAsync(afterFile);
             }
             var existing = rec.Files.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
@@ -94,27 +100,35 @@ internal sealed class PlanCommandModule : ICommandModule
                 existing = new PlanFileChange { Path = path };
                 rec.Files.Add(existing);
             }
+            existing.IsDelete = isDelete;
             existing.BeforeContent = beforeContent;
-            existing.HashBefore = PlanFileStore.Sha256(beforeContent);
+            existing.HashBefore = beforeContent != null ? PlanFileStore.Sha256(beforeContent) : null;
             existing.Rationale = string.IsNullOrWhiteSpace(rationale) ? existing.Rationale : rationale;
-            if (afterContent != null)
+            if (!isDelete && afterContent != null)
             {
                 existing.AfterContent = afterContent;
                 existing.HashAfter = PlanFileStore.Sha256(afterContent);
-                existing.Diff = DiffBuilder.Unified(beforeContent, afterContent, path);
+                existing.Diff = DiffBuilder.Unified(beforeContent ?? string.Empty, afterContent, path);
+            }
+            if (isDelete)
+            {
+                existing.AfterContent = null; // ensure not treated as modification
+                existing.HashAfter = null;
+                existing.Diff = $"Deletion staged for {path}";
             }
             await store.SaveAsync(rec);
             if (json)
             {
                 var dto = new
                 {
-                    schema = "plan.add.v1",
+                    schema = Rendering.Schemas.PlanAddV1,
                     planId = rec.Definition.Id,
                     file = new
                     {
                         path,
                         staged = true,
                         hasAfter = afterContent != null,
+                        isDelete = isDelete,
                         hashBefore = existing.HashBefore,
                         hashAfter = existing.HashAfter,
                         diffGenerated = !string.IsNullOrWhiteSpace(existing.Diff)
@@ -125,7 +139,8 @@ internal sealed class PlanCommandModule : ICommandModule
             }
             else
             {
-                console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {(afterContent!=null?"with after version":"(before snapshot only)")}");
+                var mode = isDelete ? "for deletion" : (afterContent!=null?"with after version":"(before snapshot only)");
+                console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {mode}");
             }
         });
         plan.AddCommand(add);
@@ -135,7 +150,7 @@ internal sealed class PlanCommandModule : ICommandModule
     {
         var list = new Command("list", "List recent plans");
         var takeOpt = new Option<int>("--take", () => 20);
-        var jsonOpt = new Option<bool>("--json");
+        var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: plan.list.v1)");
         list.AddOption(takeOpt); list.AddOption(jsonOpt);
         list.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
         {
@@ -144,21 +159,19 @@ internal sealed class PlanCommandModule : ICommandModule
             var json = ctx.ParseResult.GetValueForOption(jsonOpt);
             var store = services.GetRequiredService<IPlanFileStore>();
             var items = await store.ListAsync(take);
-            var writer = ctx.Console.Out;
             if (json)
             {
-                var jsonOut = System.Text.Json.JsonSerializer.Serialize(items, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                writer.Write(jsonOut + "\n"); return;
+                JsonOutput.Write(services.GetRequiredService<IAnsiConsole>(), new { schema = Rendering.Schemas.PlanListV1, plans = items });
+                return;
             }
             var console = services.GetService<IAnsiConsole>();
-            if (items.Count == 0) { writer.Write("No plans found\n"); console?.MarkupLine(ConsoleStyles.Warn("No plans found.")); return; }
+            if (items.Count == 0) { console?.MarkupLine(ConsoleStyles.Warn("No plans found.")); return; }
             var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Plans"));
             table.AddColumn("Id").AddColumn("Created").AddColumn("Goal");
             foreach (var p in items)
             {
                 var shortId = p.Id.Length>10? p.Id[..10]+"…":p.Id;
                 table.AddRow(ConsoleStyles.Accent(shortId), p.CreatedUtc.ToString("u"), p.Goal);
-                writer.Write(p.Id+"\t"+p.Goal+"\n");
             }
             console?.Write(table);
         });
@@ -167,19 +180,31 @@ internal sealed class PlanCommandModule : ICommandModule
 
     private static void BuildShow(Command plan, IServiceProvider services)
     {
-        var show = new Command("show", "Show a plan JSON");
+        var show = new Command("show", "Show a plan");
         var idOpt = new Option<string>("--id") { IsRequired = true };
-        show.AddOption(idOpt);
-        show.SetHandler( async (string id) =>
+        var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: plan.show.v1)");
+        show.AddOption(idOpt); show.AddOption(jsonOpt);
+        show.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
         {
             using var activity = Telemetry.ActivitySource.StartActivity("plan.show", ActivityKind.Client);
+            var id = ctx.ParseResult.GetValueForOption(idOpt)!;
+            var json = ctx.ParseResult.GetValueForOption(jsonOpt);
             var store = services.GetRequiredService<IPlanFileStore>();
             var rec = await store.GetAsync(id);
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
-            var json = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            console.Write(new Panel(new Markup(ConsoleStyles.Escape(json))).Header(ConsoleStyles.PanelTitle(id)).RoundedBorder());
-        }, idOpt);
+            if (rec == null)
+            {
+                if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
+                console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
+            }
+            if (json)
+            {
+                JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, plan = rec });
+                return;
+            }
+            var pretty = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            console.Write(new Panel(new Markup(ConsoleStyles.Escape(pretty))).Header(ConsoleStyles.PanelTitle(id)).RoundedBorder());
+        });
         plan.AddCommand(show);
     }
 
@@ -187,7 +212,7 @@ internal sealed class PlanCommandModule : ICommandModule
     {
         var diff = new Command("diff", "Show unified diffs for a plan");
         var diffIdOpt = new Option<string>("--id") { IsRequired = true };
-        var diffJsonOpt = new Option<bool>("--json");
+        var diffJsonOpt = new Option<bool>("--json", "Emit JSON (schema: plan.diff.v1)");
         diff.AddOption(diffIdOpt); diff.AddOption(diffJsonOpt);
         diff.SetHandler(async (string id, bool json) =>
         {
@@ -198,8 +223,7 @@ internal sealed class PlanCommandModule : ICommandModule
             if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
             if (json)
             {
-                var jsonOut = System.Text.Json.JsonSerializer.Serialize(rec.Files.Select(f => new { f.Path, f.Diff }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                console.WriteLine(jsonOut);
+                JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanDiffV1, planId = id, diffs = rec.Files.Select(f => new { f.Path, f.Diff }).ToArray() });
                 return;
             }
             if (rec.Files.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("Plan has no file changes.")); return; }
@@ -234,12 +258,12 @@ internal sealed class PlanCommandModule : ICommandModule
             var console = services.GetRequiredService<IAnsiConsole>();
             if (rec == null)
             {
-                if (json) { JsonOutput.Write(console, new { schema = "plan.apply.v1", error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
+                if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanApplyV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
                 console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             if (rec.Files.Count == 0)
             {
-                if (json) { JsonOutput.Write(console, new { schema = "plan.apply.v1", error = new { code = "NoChanges", message = "No changes to apply" } }); return; }
+                if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanApplyV1, error = new { code = "NoChanges", message = "No changes to apply" } }); return; }
                 console.MarkupLine(ConsoleStyles.Warn("No changes to apply.")); return;
             }
             int applied = 0; int skipped = 0; int drift = 0;
@@ -249,6 +273,28 @@ internal sealed class PlanCommandModule : ICommandModule
             foreach (var f in rec.Files)
             {
                 string action = string.Empty; bool hadDrift = false; string? backupPath = null;
+                if (f.IsDelete)
+                {
+                    if (!File.Exists(f.Path)) { skipped++; changes.Add(new { path = f.Path, action = "skip-missing", hadDrift, backupPath }); continue; }
+                    if (!dryRun && File.Exists(f.Path))
+                    {
+                        try
+                        {
+                            var rel = Path.GetFileName(f.Path);
+                            backupPath = Path.Combine(backupRoot, rel!);
+                            File.Copy(f.Path, backupPath!, overwrite: true);
+                        }
+                        catch { }
+                    }
+                    try
+                    {
+                        if (!dryRun) File.Delete(f.Path);
+                        applied++; action = dryRun ? "dry-run-delete" : "deleted";
+                    }
+                    catch { skipped++; action = "delete-error"; }
+                    changes.Add(new { path = f.Path, action, hadDrift, backupPath });
+                    continue;
+                }
                 if (f.AfterContent == null) { skipped++; continue; }
                 if (!string.IsNullOrWhiteSpace(f.HashBefore) && File.Exists(f.Path))
                 {
@@ -292,7 +338,7 @@ internal sealed class PlanCommandModule : ICommandModule
             {
                 var jsonPayload = new
                 {
-                    schema = "plan.apply.v1",
+                    schema = Rendering.Schemas.PlanApplyV1,
                     planId = rec.Definition.Id,
                     dryRun,
                     force,

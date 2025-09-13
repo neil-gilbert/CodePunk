@@ -19,10 +19,29 @@ public class PlanJsonTests
     private static JsonDocument ExtractJson(TestConsole console)
     {
         var text = console.Output;
-        var start = text.IndexOf('{');
-        var end = text.LastIndexOf('}');
-        if (start < 0 || end <= start) throw new InvalidOperationException($"Could not locate JSON braces. Output:\n{text}");
-        var slice = text.Substring(start, end - start + 1);
+        // strip ANSI escape sequences
+        text = System.Text.RegularExpressions.Regex.Replace(text, "\u001B\\[[0-9;]*[A-Za-z]", string.Empty);
+        // Some tests may have multiple JSON objects if prior commands wrote JSON.
+        // We capture the last complete JSON object by scanning tokens.
+        int depth = 0; int lastObjStart = -1; int lastObjEnd = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '{')
+            {
+                if (depth == 0) lastObjStart = i;
+                depth++;
+            }
+            else if (text[i] == '}')
+            {
+                if (depth > 0) depth--;
+                if (depth == 0 && lastObjStart >= 0)
+                {
+                    lastObjEnd = i;
+                }
+            }
+        }
+        if (lastObjStart < 0 || lastObjEnd < lastObjStart) throw new InvalidOperationException($"Could not locate JSON braces. Output:\n{text}");
+        var slice = text.Substring(lastObjStart, lastObjEnd - lastObjStart + 1);
         return JsonDocument.Parse(slice);
     }
     
@@ -142,6 +161,68 @@ public class PlanJsonTests
             
             Assert.Equal(0, summary.GetProperty("applied").GetInt32());
             Assert.True(summary.GetProperty("drift").GetInt32() >= 1);
+        }
+        finally { try { Directory.Delete(tmp, true); } catch { } }
+    }
+
+    [Fact]
+    public async Task Plan_Add_Delete_And_Apply_DryRun()
+    {
+        var (root, sp, tmp, testConsole) = BuildWithConsole();
+        try
+        {
+            var store = sp.GetRequiredService<IPlanFileStore>();
+            var id = await CreateAsync(store);
+            var workDir = Path.Combine(tmp, "w"); Directory.CreateDirectory(workDir);
+            var file = Path.Combine(workDir, "d.txt"); await File.WriteAllTextAsync(file, "Delete me\n");
+            await root.InvokeAsync(["plan","add","--id",id,"--path",file,"--delete","--json"]);
+            testConsole.Clear();
+            var code = await root.InvokeAsync(["plan","apply","--id",id,"--dry-run","--json"]);
+            Assert.Equal(0, code);
+            using var doc = ExtractJson(testConsole);
+            var changes = doc.RootElement.GetProperty("changes");
+            Assert.Contains(changes.EnumerateArray(), el => el.GetProperty("action").GetString()!.Contains("dry-run-delete"));
+        }
+        finally { try { Directory.Delete(tmp, true); } catch { } }
+    }
+
+    [Fact]
+    public async Task Plan_List_Show_Diff_Json_Schemas()
+    {
+        var (root, sp, tmp, testConsole) = BuildWithConsole();
+        try
+        {
+            var store = sp.GetRequiredService<IPlanFileStore>();
+            var id = await CreateAsync(store);
+            var workDir = Path.Combine(tmp, "w"); Directory.CreateDirectory(workDir);
+            var file = Path.Combine(workDir, "e.txt"); await File.WriteAllTextAsync(file, "V1\n");
+            var after = Path.Combine(workDir, "e.after.txt"); await File.WriteAllTextAsync(after, "V2\n");
+            await root.InvokeAsync(["plan","add","--id",id,"--path",file,"--after-file",after]);
+
+            // list
+            testConsole.Clear();
+            await root.InvokeAsync(["plan","list","--json"]);
+            using (var docList = ExtractJson(testConsole))
+            {
+                Assert.Equal("plan.list.v1", docList.RootElement.GetProperty("schema").GetString());
+            }
+
+            // show
+            testConsole.Clear();
+            await root.InvokeAsync(["plan","show","--id",id,"--json"]);
+            using (var docShow = ExtractJson(testConsole))
+            {
+                Assert.Equal("plan.show.v1", docShow.RootElement.GetProperty("schema").GetString());
+            }
+
+            // diff
+            testConsole.Clear();
+            await root.InvokeAsync(["plan","diff","--id",id,"--json"]);
+            using (var docDiff = ExtractJson(testConsole))
+            {
+                Assert.Equal("plan.diff.v1", docDiff.RootElement.GetProperty("schema").GetString());
+                Assert.Equal(id, docDiff.RootElement.GetProperty("planId").GetString());
+            }
         }
         finally { try { Directory.Delete(tmp, true); } catch { } }
     }

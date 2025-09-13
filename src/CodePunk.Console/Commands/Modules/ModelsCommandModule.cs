@@ -18,7 +18,7 @@ internal sealed class ModelsCommandModule : ICommandModule
     }
     private static Command BuildModels(IServiceProvider services)
     {
-        var jsonOpt = new Option<bool>("--json", "Output JSON");
+    var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: models.list.v1)");
         var availableOnlyOpt = new Option<bool>("--available-only", "Show only providers with stored API keys");
         var cmd = new Command("models", "List available models from configured providers") { jsonOpt, availableOnlyOpt };
         cmd.SetHandler(async (InvocationContext ctx) =>
@@ -45,20 +45,28 @@ internal sealed class ModelsCommandModule : ICommandModule
                 var writer = ctx.Console.Out;
                 if (json)
                 {
-                    var jsonOut = System.Text.Json.JsonSerializer.Serialize(rows.Select(r => new { provider = r.Provider, id = r.Id, name = r.Name, context = r.Context, maxTokens = r.MaxTokens, tools = r.Tools, streaming = r.Streaming, hasKey = r.HasKey }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                    writer.Write(jsonOut + "\n"); return;
+                    var payload = new { schema = Rendering.Schemas.ModelsListV1, models = rows.Select(r => new { provider = r.Provider, id = r.Id, name = r.Name, context = r.Context, maxTokens = r.MaxTokens, tools = r.Tools, streaming = r.Streaming, hasKey = r.HasKey }).ToArray() };
+                    var ansi = services.GetService<IAnsiConsole>();
+                    if (ansi != null)
+                    {
+                        Rendering.JsonOutput.Write(ansi, payload);
+                    }
+                    else
+                    {
+                        var jsonText = System.Text.Json.JsonSerializer.Serialize(payload, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                        ctx.Console.Out.Write(jsonText + System.Environment.NewLine);
+                    }
+                    return;
                 }
                 var console = services.GetService<IAnsiConsole>();
                 if (providers.Count == 0)
                 {
                     var guidance = "No providers available. Authenticate first: codepunk auth login --provider <name> --key <APIKEY>";
-                    writer.Write(guidance + "\n");
                     console?.MarkupLine(ConsoleStyles.Warn(guidance));
                     return;
                 }
                 if (rows.Count == 0)
                 {
-                    writer.Write("No models found.\n");
                     console?.MarkupLine(ConsoleStyles.Warn("No models found."));
                     return;
                 }
@@ -75,7 +83,7 @@ internal sealed class ModelsCommandModule : ICommandModule
                 {
                     var providerLabel = r.HasKey ? ConsoleStyles.Accent(r.Provider) : $"[grey]{r.Provider}[/]";
                     table.AddRow(providerLabel, r.Id, r.Name, r.Context.ToString(), r.MaxTokens.ToString(), r.Tools?"[green]✓[/]":"[grey]-[/]", r.Streaming?"[green]✓[/]":"[grey]-[/]", r.HasKey?"[green]✓[/]":"[red]✗[/]");
-                    writer.Write($"{r.Provider}\t{r.Id}\t{r.Name}\n");
+                    ctx.Console.Out.Write($"{r.Provider}\t{r.Id}\t{r.Name}\n");
                 }
                 console?.Write(table);
             }

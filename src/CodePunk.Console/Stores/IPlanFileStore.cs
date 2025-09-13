@@ -25,6 +25,7 @@ public class PlanFileChange
     public string? Rationale { get; set; }
     public string? BeforeContent { get; set; }
     public string? AfterContent { get; set; }
+    public bool IsDelete { get; set; }
 }
 
 public class PlanRecord

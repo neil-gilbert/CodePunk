@@ -108,6 +108,7 @@ public class InteractiveChatSession
 
     IsProcessing = true;
     _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageStart, CurrentSession!.Id));
+        await Task.Yield(); // allow observers to see IsProcessing=true before heavy work
         try
         {
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
@@ -209,6 +210,7 @@ public class InteractiveChatSession
 
     IsProcessing = true;
     _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageStart, CurrentSession!.Id));
+        await Task.Yield(); // allow observers to see IsProcessing=true before streaming work
         try
         {
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);

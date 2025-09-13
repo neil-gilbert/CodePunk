@@ -29,8 +29,9 @@ internal sealed class RunCommandModule : ICommandModule
         var continueOpt = new Option<bool>(new[]{"--continue","-c"}, description: "Continue latest session");
         var agentOpt = new Option<string>(new[]{"--agent","-a"}, () => string.Empty, "Agent name override");
         var modelOpt = new Option<string>(new[]{"--model","-m"}, () => string.Empty, "Model override (provider/model)");
-        var cmd = new Command("run", "Run a one-shot prompt or continue a session") { messageArg, sessionOpt, continueOpt, agentOpt, modelOpt };
-        cmd.SetHandler(async (string? message, string session, bool cont, string agent, string model) =>
+    var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: run.execute.v1)");
+    var cmd = new Command("run", "Run a one-shot prompt or continue a session") { messageArg, sessionOpt, continueOpt, agentOpt, modelOpt, jsonOpt };
+    cmd.SetHandler(async (string? message, string session, bool cont, string agent, string model, bool json) =>
         {
             var console = services.GetRequiredService<IAnsiConsole>();
             var chatLoop = services.GetRequiredService<InteractiveChatLoop>();
@@ -76,12 +77,47 @@ internal sealed class RunCommandModule : ICommandModule
                     activity?.SetTag("tokens.prompt.approx", promptTokensApprox);
                     activity?.SetTag("tokens.completion.approx", completionTokensApprox);
                     activity?.SetTag("tokens.total.approx", promptTokensApprox + completionTokensApprox);
+                    if (json)
+                    {
+                        Rendering.JsonOutput.Write(console, new
+                        {
+                            schema = Rendering.Schemas.RunExecuteV1,
+                            sessionId,
+                            agent = string.IsNullOrWhiteSpace(agent) ? null : agent,
+                            model = modelOverride ?? model,
+                            request = new { message },
+                            response = new { content = response },
+                            usage = new { promptTokensApprox, completionTokensApprox, totalTokensApprox = promptTokensApprox + completionTokensApprox }
+                        });
+                        return;
+                    }
                 }
-                var shortId = sessionId.Length > 10 ? sessionId[..10] + "…" : sessionId;
-                console.MarkupLine($"{ConsoleStyles.Dim("Session:")} {ConsoleStyles.Accent(shortId)}");
+                if (json)
+                {
+                    Rendering.JsonOutput.Write(console, new
+                    {
+                        schema = Rendering.Schemas.RunExecuteV1,
+                        sessionId,
+                        agent = string.IsNullOrWhiteSpace(agent) ? null : agent,
+                        model = modelOverride ?? model,
+                        request = new { message },
+                        response = new { content = response },
+                        usage = new
+                        {
+                            promptTokensApprox = string.IsNullOrWhiteSpace(message)?0:(int)Math.Ceiling(message.Length/4.0),
+                            completionTokensApprox = string.IsNullOrWhiteSpace(response)?0:(int)Math.Ceiling(response.Length/4.0),
+                            totalTokensApprox = (string.IsNullOrWhiteSpace(message)?0:(int)Math.Ceiling(message.Length/4.0)) + (string.IsNullOrWhiteSpace(response)?0:(int)Math.Ceiling(response.Length/4.0))
+                        }
+                    });
+                }
+                else
+                {
+                    var shortId = sessionId.Length > 10 ? sessionId[..10] + "…" : sessionId;
+                    console.MarkupLine($"{ConsoleStyles.Dim("Session:")} {ConsoleStyles.Accent(shortId)}");
+                }
             }
             else { await chatLoop.RunAsync(); }
-        }, messageArg, sessionOpt, continueOpt, agentOpt, modelOpt);
+        }, messageArg, sessionOpt, continueOpt, agentOpt, modelOpt, jsonOpt);
         return cmd;
     }
 }
