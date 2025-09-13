@@ -29,7 +29,6 @@ public class HelpCommand : ChatCommand
             .AddColumn("Description")
             .BorderColor(Color.Grey);
 
-        // Static list of available commands - simple and no circular DI dependencies
         var commands = new[]
         {
             ("/clear", new[] { "/cls" }, "Clear the console screen"),
