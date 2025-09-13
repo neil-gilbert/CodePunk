@@ -220,7 +220,7 @@ CodePunk is open source and welcomes contributions from engineers working in any
 git clone https://github.com/neil-gilbert/CodePunk.git
 cd CodePunk
 dotnet restore
-dotnet test  # Ensure tests pass (current: 139 passing, 1 skipped)
+dotnet test  # Ensure tests pass (current: 146 passing, 1 skipped)
 ```
 
 ## 🧭 CLI Command Reference
@@ -244,11 +244,70 @@ Current top-level commands (invoke with `codepunk <command>` or `dotnet run --pr
 | `plan create` | Create a new plan | `--goal <text>` |
 | `plan list` | List recent plans | `--take <n>`, `--json` |
 | `plan show` | Show full plan JSON | `--id <planId>` |
-| `plan add` | Stage file change (before + optional after) | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>]` |
+| `plan add` | Stage file change (before + optional after) | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>] [--json]` |
 | `plan diff` | Show unified diffs for staged changes | `--id <planId> [--json]` |
-| `plan apply` | Apply changes (drift-safe) | `--id <planId> [--dry-run] [--force]` |
+| `plan apply` | Apply changes (drift-safe) | `--id <planId> [--dry-run] [--force] [--json]` |
 
 Invoking with no command launches the interactive chat loop.
+
+### Plan Command JSON Output
+
+Automation-friendly JSON is available for `plan add`, `plan diff`, and `plan apply` via the `--json` flag. Schemas are versioned (`schema` field) to allow non‑breaking evolution.
+
+Example: `plan add --id <planId> --path src/Foo.cs --after-file Foo.updated.cs --json`
+
+```json
+{
+  "schema": "plan.add.v1",
+  "planId": "b3f0f1c4a1d24b1b9c2f7d8e5f901234",
+  "path": "src/Foo.cs",
+  "staged": true,
+  "diffGenerated": true,
+  "rationale": "Refactor method names",
+  "error": null
+}
+```
+
+`error` will contain an object instead of `null` on failure, e.g. `{ "code": "FileNotFound", "message": "..." }` and `staged` will be `false`.
+
+Example: `plan apply --id <planId> --json`
+
+```json
+{
+  "schema": "plan.apply.v1",
+  "planId": "b3f0f1c4a1d24b1b9c2f7d8e5f901234",
+  "dryRun": false,
+  "backupDirectory": "/Users/me/.config/codepunk/backups/2025-09-11_12-34-56_abcdef/",
+  "files": [
+    {
+      "path": "src/Foo.cs",
+      "action": "applied",
+      "reason": null
+    },
+    {
+      "path": "src/Bar.cs",
+      "action": "skipped-drift",
+      "reason": "Original file content has changed since staging"
+    }
+  ],
+  "summary": {
+    "applied": 1,
+    "skipped": 1,
+    "drift": 1,
+    "backedUp": 2
+  },
+  "error": null
+}
+```
+
+Per‑file `action` values (stable for v1):
+
+- `applied` – Change written (non dry‑run, no drift)
+- `dry-run` – Would be written, suppressed by `--dry-run`
+- `skipped-drift` – Not applied because the original file was modified externally
+- `skipped-error` – Not applied due to an error (see `reason`)
+
+Future additions (e.g. new action types or summary fields) will preserve existing semantics; rely on `schema` for compatibility gating.
 
 ### Interactive Slash Commands
 
