@@ -1,90 +1,56 @@
 # CodePunk CLI Parity Plan
 
-Version: 1.0.0
-Last Updated: 2025-09-06
+Version: 1.2.1
+Last Updated: 2025-09-13
 
-This document tracks progress toward feature parity with the opencode.ai CLI.
-It is implementation-focused and can be resumed at any time by a contributor or AI assistant.
-
----
-## 1. Reference Feature Set (Target)
-Commands to conceptually mirror:
-- run (one-shot non-interactive prompt execution; session continuation)
-- agent (create/manage agent definitions: system prompt + tools)
-- auth (login/list/logout providers & store keys)
-- models (list available provider/model pairs)
-- serve (headless HTTP server exposing API)
-- github (install/run automation workflow) – optional for MVP
-- upgrade (self-update helper / guidance)
-
-Global flags parity: --model, --agent, --prompt, --session / --continue, --port, --hostname, --help, --version.
+This plan has been refocused on the core "coder CLI" workflow: create agents, run one‑shot prompts or continue sessions, generate and apply structured code change plans. Broader platform / automation features (HTTP server, semantic index, CI helpers, GitHub automation, advanced refactors) are deferred. The intent is to ship a lean but end‑to‑end useful developer loop rapidly to gather real user feedback.
 
 ---
-## 2. Current State Snapshot
+## 1. Focused MVP Feature Set (Coder Loop)
+Included (MVP scope):
+- run (one-shot prompt; continue existing session)
+- agent (create/list/show/delete simple agent definitions)
+- auth (login/list/logout API provider keys)
+- sessions (list/show/load persisted chat sessions)
+- plan (generate structured change plan)
+- apply (apply a previously generated plan with diff + confirmation)
+- models (optional: enumerate provider/model pairs if keys present)
+
+Global flags (initial subset): --model, --agent, --session / --continue, --help, --version (others like --prompt, networking flags deferred).
+
+Deferred (post-MVP): serve, github, upgrade, semantic index, generate-tests, refactor, prompts list/show (beyond internal layering), advanced security scan, config layering, OTel beyond minimal, plugin system, TUI, automation workflows.
+
+---
+## 2. Current State Snapshot (v1.2.1)
 Implemented:
-- Interactive chat session (manual) with file read/write tools.
-- Prompt layering: Base + Provider prompts + external overrides (env path).
-- Anthropic optimized provider prompt.
-- Basic tests for PromptProvider.
+- Interactive chat loop (REPL) launching when no args provided.
+- Auth key store + `auth` CLI (login/list/logout) with file persistence.
+- Agent file store + `agent create|list|show|delete`.
+- Run command with one‑shot prompt, `--session`, `--continue`, `--agent`, `--model`, and JSON output (`run.execute.v1`).
+- Session file store + `sessions list|show|load` with JSON (`sessions.list.v1`, `sessions.show.v1`).
+- Plan subsystem: create/list/show/add/diff/apply with persistent plan records, unified diffs, drift detection, dry‑run + force, deletion staging (`--delete`), automatic backups, JSON schemas (`plan.create/add/list/show/diff/apply`).
+- Unified JSON output helper + centralized schema constants (including models.list.v1).
+- Deletion support in plan add/apply (actions: deleted, dry-run-delete, skip-missing, delete-error).
+- Approximate token usage (char/4 heuristic) surfaced in run JSON output.
+- Models command implemented (plain table + JSON schema `models.list.v1`) listing provider/model pairs with key presence flag.
+- Test stabilization: enhanced JSON extraction in console tests (ANSI stripping + last-object scan) to make schema parsing resilient to surrounding output.
 
-Missing / Partial:
-- Structured CLI subcommand framework.
-- Agent definitions persistence (none yet).
-- Auth key storage and provider management.
-- Model listing.
-- Plan → Diff → Apply workflow.
-- Diff preview & dry-run.
-- Semantic search / indexing.
-- Test generation / refactor commands.
-- Session persistence (resume by ID).
-- OTel tracing implementation (planned).
-- Front-matter prompt merging (Append/Replace) not parsed yet.
-- HTTP server mode (serve).
-- Token usage accounting wrapper.
-- Upgrade / github integration.
+Remaining (MVP polish / minor):
+- Extend token usage to additional commands if/when they invoke model calls beyond run (currently plan create is manual goal only, so token usage is 0 / N/A).
+
+Deferred (post-MVP – unchanged): serve mode, semantic index/search, generate-tests, refactor, GitHub automation, upgrade, extended telemetry, advanced security scan, front-matter parser, plugin system, TUI.
 
 ---
-## 3. Gap Matrix & Priority
-P0 (Baseline Parity Core):
-1. CLI command router (System.CommandLine recommended).
-2. run command (--model, --agent, --session / --continue).
-3. auth (login/list/logout) with secure local JSON store.
-4. agent (create/list/show/remove) storing definitions.
-5. models (aggregate from providers with keys).
-6. Session persistence service & storage layout.
-7. Plan + Diff + Apply workflow (foundation).
-8. Dry-run apply mode.
-9. Token usage capture (basic counters).
-10. Front-matter parser for prompt overrides.
-11. OpenTelemetry tracing skeleton.
+## 3. Gap Matrix & Priority (Updated)
+Completed (MVP Core): 1–6 from prior list (auth, sessions CLI, run JSON, plan persistence + diff/apply, unified JSON output, deletion support).
 
-P1 (Enhanced Parity):
-12. serve HTTP mode (chat, plan, apply, search endpoints).
-13. Semantic index (build-index, search).
-14. generate-tests command.
-15. refactor (rename symbol) command.
-16. prompts list/show.
-17. upgrade helper command.
-18. Basic security scan (secret patterns + path enforcement).
+Remaining Near-Term:
+7. Token usage extension (decision: keep limited to run until AI-driven plan generation exists).
 
-P2 (Extended Quality):
-19. github automation scaffolder.
-20. Tool registry list/enable/disable.
-21. Agent export/import.
-22. Config file layering (global + repo local).
-23. Provider fallback strategy.
-24. Extended OTel metrics & spans.
-25. Embedding provider abstraction.
-
-P3 (Deferred / Nice-to-Have):
-26. Plugin system (custom tools).
-27. Prompt directory hot-reload.
-28. Advanced refactor actions (extract method, API migration).
-29. Policy mutators (org rules injection).
-30. Rich TUI.
+Stretch / Deferred: Front-matter prompt parser, extended telemetry toggle, others as previously deferred.
 
 ---
-## 4. Storage Layout (Planned)
+## 4. Storage Layout (Planned – Coder Scope)
 Global (user home):
 - ~/.config/codepunk/auth.json { provider: apiKey }
 - ~/.config/codepunk/agents/*.json (agent definitions)
@@ -102,83 +68,75 @@ Cache / Temp:
 - .codepunk/tmp/
 
 ---
-## 5. Core Interfaces To Implement / Extend
-- IAuthStore: LoadAsync, SaveAsync, SetKey, RemoveKey, ListProviders.
-- IAgentStore: Create, Get, List, Delete, Resolve(agentName) → composite prompt.
-- ISessionStore: CreateSession, AppendMessage, GetSession, ListSessions.
+## 5. Core Interfaces (Active Set)
+- IAuthStore: SetKey, RemoveKey, ListProviders, LoadAsync/SaveAsync.
+- IAgentStore: (Implemented) Create, Get, List, Delete (future: Resolve composite prompt).
+- ISessionStore: Create, Append, Get, List.
 - IPlanService: GeneratePlanAsync(input) → Plan.
-- IDiffService: CreateDiff(original, updated) → Diff (with hash).
+- IDiffService: CreateDiff(original, updated) → Diff (hash for conflict detection).
 - IApplyService: ApplyAsync(planId, options) → ApplyResult.
-- IIndexService: BuildAsync(root), QueryAsync(text, topK).
-- IModelCatalog: ListModels(providerFilter?).
-- ITokenUsageRecorder (or embed inside ILLMService wrapper).
+- ITokenUsageRecorder (lightweight wrapper or integrated into LLM provider).
 
-Existing to extend: IPromptProvider (front-matter parsing).
+Deferred Interfaces: IIndexService, IModelCatalog (beyond minimal static listing), extended prompt layering front‑matter (optional stretch), advanced telemetry abstractions.
 
 ---
-## 6. Data Contracts (Versioned)
-Plan v1:
+## 6. Data Contracts (Implemented Forms)
+Plan Record (internal storage – minimal file list model):
 ```
 {
-  "version": 1,
-  "summary": "string",
-  "steps": [
+  "definition": { "id": "20250913-abc123", "goal": "Refactor X", "createdUtc": "2025-09-13T12:34:56Z" },
+  "files": [
     {
-      "id": "S1",
-      "intent": "string",
-      "files": [ { "path": "src/..", "action": "modify|create|delete" } ],
-      "notes": "optional string"
+      "path": "src/Foo.cs",
+      "beforeContent": "...",          // may be null if new file or delete staged before reading
+      "afterContent": "...",           // null for deletion or snapshot-only stage
+      "hashBefore": "HEX?",            // SHA256 of beforeContent (if present)
+      "hashAfter": "HEX?",             // SHA256 of afterContent (if present)
+      "diff": "--- unified diff ---",  // or text marker for deletions
+      "rationale": "why the change",    // optional
+      "isDelete": true|false
     }
   ]
 }
 ```
-Diff:
+Plan JSON output schemas (CLI) expose filtered projections per command; rely on `schema` field (see Section 8).
+
+Token Usage (approximation – run command only so far):
 ```
 {
-  "path": "string",
-  "originalHash": "sha256",
-  "newHash": "sha256",
-  "unified": "--- diff text ---",
-  "action": "modify|create|delete"
+  "promptTokensApprox": n,
+  "completionTokensApprox": n,
+  "totalTokensApprox": n
 }
-```
-PromptDefinition front-matter YAML:
-```
----
-mode: Append|Replace
-priority: 120
-description: Optional summary
----
-<markdown content>
-```
-TokenUsage:
-```
-{ "model": "provider/model", "inputTokens": n, "outputTokens": n }
 ```
 
 ---
-## 7. Prompt Merging Rules
+## 7. Prompt Merging Rules (Current State)
 Order: Base → Provider → Overrides (sorted by priority asc). Replace resets chain; Append concatenates with blank line.
 Maximum size per composite (configurable, default 64 KB). Cache by (provider,type,hash).
 
 ---
-## 8. Plan → Diff → Apply Workflow (MVP)
-1. plan (input prompt) → Plan JSON stored (.codepunk/plans/plan-{id}.json).
-2. apply [planId] → generate proposed file states → diffs.
-3. Show unified diffs; if --dry-run stop after display.
-4. Require confirmation (all or interactive) then write atomically.
-5. Post-apply: print summary {files changed, created, deleted, token usage}.
-6. Conflicts: if current file hash != originalHash, mark conflict; skip apply; user must re-plan.
+## 8. Plan → Diff → Apply Workflow (Implemented v1)
+1. `plan create --goal` creates persistent plan (empty file list initially).
+2. `plan add` stages file changes:
+  - Snapshot only (beforeContent) if no `--after-file`.
+  - Modification (before + after + diff + hashes) if `--after-file` provided.
+  - Deletion via `--delete` (records beforeContent hash + deletion marker diff).
+3. `plan diff` shows stored unified diffs (including deletion marker strings).
+4. `plan apply`:
+  - Optional `--dry-run` (reports actions without writing).
+  - Drift detection: if current file hash != stored `hashBefore` and not `--force`, skip with action `skipped-drift`.
+  - Backups: original file copies stored under plan-specific backup directory (including deleted files before removal).
+  - Actions emitted: applied, dry-run, deleted, dry-run-delete, skip-missing, skipped-drift, skipped-error, delete-error.
+5. JSON output (`plan.apply.v1`) includes summary { applied, skipped, drift, backedUp } and per-change details (path, action, hadDrift, backupPath).
+6. Re-apply after drift: user can re-stage file or use `--force` to override (still flagged with `hadDrift` true).
 
 ---
-## 9. Semantic Index (MVP)
-- build-index: traverse repo (respect ignore patterns), chunk text (e.g., ~800 tokens logical boundaries).
-- Store embeddings in JSON or lightweight binary (embedding store file).
-- search: query → embed → cosine similarity topK → return path + line snippet contexts.
-- Rebuild required after significant code changes (no auto watch).
+## 9. (Deferred) Semantic Index
+Removed from MVP; revisit after initial user feedback.
 
 ---
-## 10. CLI Command Specifications (Initial)
+## 10. CLI Command Specifications (Current Implementation)
 run:
 - Args: message (optional). If absent, start interactive REPL.
 - Flags: --model, --agent, --session|--continue, --prompt (override system prompt), --dry-run (for agent actions producing plan?).
@@ -209,36 +167,29 @@ prompts:
 - list: provider, type, source, priority, mode.
 - show: provider + type final composite.
 
-build-index / search (P1): straightforward.
-
-serve (P1): minimal endpoints: /api/chat, /api/plan, /api/apply, /api/search.
-
-upgrade (P1): prints instructions for `dotnet tool update --global CodePunk`.
+Deferred specs removed (serve, build-index/search, upgrade) – will reintroduce in a separate roadmap once MVP validated.
 
 ---
-## 11. OpenTelemetry Tracing (Incremental)
-P0 Spans: run, plan, apply root; LLM.Call; Apply.File; PromptResolve.
-P1 Spans: Index.Build, Index.Query, Refactor.Rename, Test.Generate.
-Metrics: llm.tokens.input/output, apply.files.changed, plan.duration.ms (hist), llm.latency.ms (hist), index.size.chunks (gauge).
-Disable via CODEPUNK_TRACING=0.
+## 11. Telemetry (Minimal for MVP)
+Initial: Approx token counts + basic activity spans already present for run/agent operations. Extended tracing & metrics deferred. Environment toggle may be added post-MVP.
 
 ---
-## 12. Security & Safety Baseline
+## 12. Security & Safety Baseline (Unchanged Core)
 - Deny path escapes (../ or symlink outside root).
 - Skip binary or >1MB by default (configurable).
 - Secret pattern detection (basic regex) redacts before persistence.
 - Malicious code heuristics: refuse with short message.
 
 ---
-## 13. Implementation Phases (Sprint Breakdown)
-Sprint 1 (P0 Core): CLI framework, auth store, agent store, session persistence, run command, basic model listing, OTel skeleton.
-Sprint 2: Plan service, diff + apply, dry-run, token usage hook, prompt front-matter parser, prompts list/show.
-Sprint 3: Semantic index (build/search), test generation, refactor rename, serve mode, security scan.
-Sprint 4: upgrade command, config layering, extended metrics, error classification, agent export/import.
-Sprint 5: github automation stub, tool registry mgmt, provider fallback, prompt hot-reload (optional), embedding abstraction.
+## 13. Phased Delivery (Progress Update)
+Phase A: Auth + Sessions + Run JSON – COMPLETE.
+Phase B: Plan persistence + Diff + Apply + Deletion – COMPLETE.
+Phase C: Unified JSON schemas – COMPLETE (token usage partially: run only).
+Phase D: Docs & integration scenario test – INITIAL (README + placeholder integration test present; full CLI E2E test pending optional).
+Phase E: Deferred roadmap features – NOT STARTED (by design).
 
 ---
-## 14. Risk & Mitigation
+## 14. Risk & Mitigation (Still Relevant)
 - Scope creep → Enforce guardrails doc.
 - Diff conflicts → Hash verification + conflict status.
 - Token inaccuracy → Fallback approximate token count (char/4 heuristic) if provider silent.
@@ -246,21 +197,18 @@ Sprint 5: github automation stub, tool registry mgmt, provider fallback, prompt 
 - Performance on large repos → Configurable indexing file glob + size cap.
 
 ---
-## 15. Definition of Done (Parity Baseline)
-All P0 items implemented + successful manual test sequence:
-1. auth login provider
-2. agent create sample-agent
-3. run --agent sample-agent "Add a helper class"
-4. plan "Refactor X into Y" → plan id
-5. apply plan id (diff preview, confirmation, apply) 
-6. prompts show provider Coder displays merged prompt
-7. models lists available models
-8. Token usage summary appears
-9. OTel spans visible (run, plan, apply)
+## 15. Definition of Done (Updated – Coder Loop)
+MVP DoD now considered met when:
+1. Auth, agents, sessions, run, plan (create/add/diff/apply with deletion) all operational with JSON schemas.
+2. Approx token usage present in run JSON output.
+3. README documents coder workflow & schemas.
+4. Plan deletion actions covered by tests.
+5. Unified JSON schema tests pass (current console tests green).
+6. Optional: models command may be added without blocking MVP.
 
 ---
-## 16. Backlog (Deferred After Parity)
-Plugin system, advanced refactors, policy mutators, multi-provider fallback, TUI enhancements, full GitHub automation, prompt diff/export tools, continuous indexing watch.
+## 16. Backlog (Deferred After MVP)
+Serve mode, semantic index/search, generate-tests, refactor rename, upgrade helper, GitHub automation, advanced security scan, config layering, provider fallback, extended telemetry/metrics, plugin system, TUI, tool registry, agent export/import, prompt hot-reload, embedding abstraction, advanced refactor actions, policy mutators.
 
 ---
 ## 17. Resumption Checklist (If Picking Up Later)
@@ -272,7 +220,9 @@ Plugin system, advanced refactors, policy mutators, multi-provider fallback, TUI
 
 ---
 ## 18. Change Log
-(Empty – populate on first update.)
+2025-09-13 (v1.2.1): Added models command implementation (`models.list.v1`), improved test robustness (ANSI escape stripping + JSON last-object detection), fallback JSON output path when no ANSI console, documentation updates.
+2025-09-13 (v1.2.0): Implemented run JSON output, sessions CLI JSON, plan persistence with diff/apply + deletion & backups, unified JSON schema constants, approximate token usage (run), README & docs updates.
+2025-09-13 (v1.1.0): Narrowed scope to coder CLI MVP; reclassified server/index/refactor/test/automation features as deferred; updated DoD & phased delivery.
 
 ---
 ## 19. Glossary

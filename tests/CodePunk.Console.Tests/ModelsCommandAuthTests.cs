@@ -63,12 +63,12 @@ public class ModelsCommandAuthTests
         await auth.SetAsync("ProviderKey", "secret");
         var root = BuildRoot(llm, auth);
         var console = new TestConsole();
-        await root.InvokeAsync(new[]{"models"}, console);
-        var output = console.Out.ToString();
-        Assert.Contains("ProviderKey", output);
-        Assert.Contains("m1", output);
-        Assert.Contains("ProviderNoKey", output);
-        Assert.Contains("m2", output);
+    await root.InvokeAsync(new[]{"models"}, console);
+    var output = console.Out.ToString();
+    Assert.Contains("ProviderKey", output);
+    Assert.Contains("m1", output);
+    Assert.Contains("ProviderNoKey", output);
+    Assert.Contains("m2", output);
     }
 
     [Fact]
@@ -81,12 +81,12 @@ public class ModelsCommandAuthTests
         await auth.SetAsync("Alpha", "key");
         var root = BuildRoot(llm, auth);
         var console = new TestConsole();
-        await root.InvokeAsync(new[]{"models","--available-only"}, console);
-        var output = console.Out.ToString();
-        Assert.Contains("Alpha", output);
-        Assert.Contains("a1", output);
-        Assert.DoesNotContain("Beta", output);
-        Assert.DoesNotContain("b1", output);
+    await root.InvokeAsync(new[]{"models","--available-only"}, console);
+    var output = console.Out.ToString();
+    Assert.Contains("Alpha", output);
+    Assert.Contains("a1", output);
+    Assert.DoesNotContain("Beta", output);
+    Assert.DoesNotContain("b1", output);
     }
 
     [Fact]
@@ -100,10 +100,15 @@ public class ModelsCommandAuthTests
         var root = BuildRoot(llm, auth);
         var console = new TestConsole();
         await root.InvokeAsync(new[]{"models","--json"}, console);
-        var json = console.Out.ToString();
-    using var doc = JsonDocument.Parse(json ?? "[]");
-        var gamma = doc.RootElement.EnumerateArray().First(e => e.GetProperty("provider").GetString()=="Gamma");
-        var delta = doc.RootElement.EnumerateArray().First(e => e.GetProperty("provider").GetString()=="Delta");
+    var json = console.Out.ToString();
+    json = System.Text.RegularExpressions.Regex.Replace(json ?? string.Empty, "\u001B\\[[0-9;]*[A-Za-z]", string.Empty);
+    var idx = json.IndexOf('{'); if (idx>0) json = json[idx..];
+    var end = json.LastIndexOf('}'); if (end>0) json = json[..(end+1)];
+    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json)?"{\"schema\":\"models.list.v1\",\"models\":[]}":json);
+        Assert.Equal("models.list.v1", doc.RootElement.GetProperty("schema").GetString());
+        var arr = doc.RootElement.GetProperty("models").EnumerateArray().ToList();
+        var gamma = arr.First(e => e.GetProperty("provider").GetString()=="Gamma");
+        var delta = arr.First(e => e.GetProperty("provider").GetString()=="Delta");
         Assert.True(gamma.GetProperty("hasKey").GetBoolean());
         Assert.False(delta.GetProperty("hasKey").GetBoolean());
     }

@@ -244,70 +244,150 @@ Current top-level commands (invoke with `codepunk <command>` or `dotnet run --pr
 | `plan create` | Create a new plan | `--goal <text>` |
 | `plan list` | List recent plans | `--take <n>`, `--json` |
 | `plan show` | Show full plan JSON | `--id <planId>` |
-| `plan add` | Stage file change (before + optional after) | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>] [--json]` |
+| `plan add` | Stage file change or deletion | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>] [--delete] [--json]` |
 | `plan diff` | Show unified diffs for staged changes | `--id <planId> [--json]` |
 | `plan apply` | Apply changes (drift-safe) | `--id <planId> [--dry-run] [--force] [--json]` |
 
 Invoking with no command launches the interactive chat loop.
 
-### Plan Command JSON Output
+### JSON Output (Schemas)
 
-Automation-friendly JSON is available for `plan add`, `plan diff`, and `plan apply` via the `--json` flag. Schemas are versioned (`schema` field) to allow non‑breaking evolution.
+All automation-friendly output includes a `schema` field. Current schemas:
 
-Example: `plan add --id <planId> --path src/Foo.cs --after-file Foo.updated.cs --json`
+| Area | Command | Schema |
+|------|---------|--------|
+| Run | `run --json` | `run.execute.v1` |
+| Sessions | `sessions list --json` | `sessions.list.v1` |
+| Sessions | `sessions show --id <id> --json` | `sessions.show.v1` |
+| Plan | `plan create --goal .. --json` | `plan.create.v1` |
+| Plan | `plan add --json` | `plan.add.v1` |
+| Plan | `plan diff --json` | `plan.diff.v1` |
+| Plan | `plan show --json` | `plan.show.v1` |
+| Plan | `plan apply --json` | `plan.apply.v1` |
+| Models | `models --json` | `models.list.v1` |
 
+Backward-compatible changes may add new fields; the `schema` value will change for breaking updates only.
+
+#### Run Command Example
+
+```bash
+codepunk run "Summarize this file" --session new --json
+```
+
+```json
+{
+  "schema": "run.execute.v1",
+  "sessionId": "20250913-abcdef",
+  "agent": "default",
+  "model": "anthropic/claude-3-5-sonnet",
+  "request": "Summarize this file",
+  "response": "Here is a concise summary...",
+  "usage": { "promptChars": 1200, "completionChars": 560, "approxPromptTokens": 300, "approxCompletionTokens": 140 }
+}
+```
+
+#### Sessions Example
+
+List:
+```json
+{ "schema": "sessions.list.v1", "sessions": [ { "id": "20250913-ab12cd", "createdUtc": "2025-09-13T10:45:12Z", "title": "Refactor planner" } ] }
+```
+
+Show:
+```json
+{ "schema": "sessions.show.v1", "session": { "id": "20250913-ab12cd", "messages": [ { "role": "user", "content": "Hello" }, { "role": "assistant", "content": "Hi!" } ] } }
+```
+
+#### Plan Add Examples
+
+Stage modification:
+```bash
+plan add --id <planId> --path src/Foo.cs --after-file Foo.updated.cs --json
+```
 ```json
 {
   "schema": "plan.add.v1",
-  "planId": "b3f0f1c4a1d24b1b9c2f7d8e5f901234",
-  "path": "src/Foo.cs",
-  "staged": true,
-  "diffGenerated": true,
-  "rationale": "Refactor method names",
-  "error": null
+  "planId": "20250913-abc123",
+  "file": {
+    "path": "src/Foo.cs",
+    "staged": true,
+    "hasAfter": true,
+    "isDelete": false,
+    "hashBefore": "...",
+    "hashAfter": "...",
+    "diffGenerated": true
+  },
+  "rationale": "Refactor method names"
 }
 ```
 
-`error` will contain an object instead of `null` on failure, e.g. `{ "code": "FileNotFound", "message": "..." }` and `staged` will be `false`.
+Stage deletion:
+```bash
+plan add --id <planId> --path src/OldFile.cs --delete --json
+```
+```json
+{
+  "schema": "plan.add.v1",
+  "planId": "20250913-abc123",
+  "file": {
+    "path": "src/OldFile.cs",
+    "staged": true,
+    "hasAfter": false,
+    "isDelete": true,
+    "hashBefore": "...",
+    "hashAfter": null,
+    "diffGenerated": true
+  },
+  "rationale": null
+}
+```
 
-Example: `plan apply --id <planId> --json`
+#### Plan Diff Example
+```json
+{ "schema": "plan.diff.v1", "planId": "20250913-abc123", "diffs": [ { "path": "src/Foo.cs", "diff": "--- before\n+++ after\n..." }, { "path": "src/OldFile.cs", "diff": "Deletion staged for src/OldFile.cs" } ] }
+```
 
+#### Plan Apply Example
 ```json
 {
   "schema": "plan.apply.v1",
-  "planId": "b3f0f1c4a1d24b1b9c2f7d8e5f901234",
+  "planId": "20250913-abc123",
   "dryRun": false,
-  "backupDirectory": "/Users/me/.config/codepunk/backups/2025-09-11_12-34-56_abcdef/",
-  "files": [
-    {
-      "path": "src/Foo.cs",
-      "action": "applied",
-      "reason": null
-    },
-    {
-      "path": "src/Bar.cs",
-      "action": "skipped-drift",
-      "reason": "Original file content has changed since staging"
-    }
-  ],
-  "summary": {
-    "applied": 1,
-    "skipped": 1,
-    "drift": 1,
-    "backedUp": 2
-  },
-  "error": null
+  "force": false,
+  "summary": { "applied": 2, "skipped": 1, "drift": 1, "backedUp": 2 },
+  "changes": [
+    { "path": "src/Foo.cs", "action": "applied", "hadDrift": false, "backupPath": "/Users/me/.config/codepunk/plans/backups/..../Foo.cs" },
+    { "path": "src/OldFile.cs", "action": "deleted", "hadDrift": false, "backupPath": "/Users/me/.config/codepunk/plans/backups/.../OldFile.cs" },
+    { "path": "src/Bar.cs", "action": "skipped-drift", "hadDrift": true, "backupPath": null }
+  ]
 }
 ```
 
-Per‑file `action` values (stable for v1):
+Possible per-file `action` values (v1):
 
-- `applied` – Change written (non dry‑run, no drift)
-- `dry-run` – Would be written, suppressed by `--dry-run`
-- `skipped-drift` – Not applied because the original file was modified externally
-- `skipped-error` – Not applied due to an error (see `reason`)
+- `applied` – File content written
+- `dry-run` – Would be written (due to `--dry-run`)
+- `deleted` – File deleted
+- `dry-run-delete` – Would be deleted (dry-run)
+- `skip-missing` – Deletion skipped (file no longer exists)
+- `skipped-drift` – Skipped because original content changed (without `--force`)
+- `skipped-error` – Error writing file
+- `delete-error` – Error deleting file
 
-Future additions (e.g. new action types or summary fields) will preserve existing semantics; rely on `schema` for compatibility gating.
+Drift count in `summary` reflects files skipped for drift (whether or not `--force` was used). When `--force` is specified, drifted files still apply and `hadDrift` is `true` for those entries.
+
+#### Models List Example
+```bash
+codepunk models --available-only --json
+```
+```json
+{
+  "schema": "models.list.v1",
+  "models": [
+    { "provider": "anthropic", "id": "claude-3-5-sonnet", "name": "Claude 3.5 Sonnet", "context": 200000, "maxTokens": 4096, "tools": true, "streaming": true, "hasKey": true }
+  ]
+}
+```
 
 ### Interactive Slash Commands
 
@@ -396,6 +476,8 @@ Files & directories:
 - Added sessions root CLI (`sessions list|show|load`) with JSON output for automation.
 - Added models command JSON output and `--available-only` flag (filters to providers with stored API keys).
 - Introduced plan subsystem (create/list/show/add/diff/apply) with staging, unified diffs, drift detection (`plan apply --force` to override) and dry-run support.
+ - Added deletion staging (`plan add --delete`) and safe deletion handling with backups in `plan apply`.
+ - Standardized JSON schemas across run, sessions, and plan operations with centrally defined constants.
 
 See `ROADMAP.md` for upcoming enhancements (model listing, provider extensions, improved tool system).
 
