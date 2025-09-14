@@ -19,9 +19,10 @@ internal sealed class SessionsCommandModule : ICommandModule
     {
         var sessions = new Command("sessions", "Manage and inspect chat sessions");
         var list = new Command("list", "List recent sessions");
-        var takeOpt = new Option<int>("--take", () => 20, "Limit number of sessions");
-        var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: sessions.list.v1)");
-        list.AddOption(takeOpt); list.AddOption(jsonOpt);
+    var takeOpt = new Option<int>("--take", () => 20, "Limit number of sessions");
+    var jsonOpt = new Option<bool>("--json", "Emit JSON (schema: sessions.list.v1)");
+    var idsOnlyOpt = new Option<bool>("--ids", "Print one full session id per-line for easy copy/paste");
+    list.AddOption(takeOpt); list.AddOption(jsonOpt); list.AddOption(idsOnlyOpt);
         list.SetHandler(async (InvocationContext ctx) =>
         {
             using var activity = Telemetry.ActivitySource.StartActivity("sessions.list", ActivityKind.Client);
@@ -36,6 +37,16 @@ internal sealed class SessionsCommandModule : ICommandModule
                     Rendering.JsonOutput.Write(services.GetRequiredService<IAnsiConsole>(), new { schema = Rendering.Schemas.SessionsListV1, sessions = metas });
                     return;
                 }
+                var idsOnly = ctx.ParseResult.GetValueForOption(idsOnlyOpt);
+                if (idsOnly)
+                {
+                    var consoleIds = services.GetRequiredService<IAnsiConsole>();
+                    foreach (var m in metas)
+                    {
+                        consoleIds.MarkupLine(ConsoleStyles.Accent(m.Id));
+                    }
+                    return;
+                }
                 var console = services.GetService<IAnsiConsole>();
                     if (metas.Count == 0)
                     {
@@ -43,13 +54,24 @@ internal sealed class SessionsCommandModule : ICommandModule
                         return;
                     }
                 var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Sessions"));
-                table.AddColumn(new TableColumn("Id").LeftAligned().NoWrap());
+                var idWidth = metas.Count > 0 ? metas.Max(m => m.Id.Length) : 10;
+                table.AddColumn(new TableColumn("Id").LeftAligned().NoWrap().Width(idWidth));
                 table.AddColumn("Title"); table.AddColumn("Agent"); table.AddColumn("Model"); table.AddColumn(new TableColumn("Msgs").Centered()); table.AddColumn("Updated");
                 foreach (var m in metas)
                 {
                     table.AddRow(ConsoleStyles.Accent(m.Id), m.Title ?? "(untitled)", string.IsNullOrWhiteSpace(m.Agent)?"[grey]-[/]":m.Agent!, m.Model ?? "[grey](default)[/]" , m.MessageCount.ToString(), m.LastUpdatedUtc.ToString("u"));
                 }
-                    if (!Rendering.OutputContext.IsQuiet()) console?.Write(table);
+                    if (!Rendering.OutputContext.IsQuiet())
+                    {
+                        console?.Write(table);
+                        // Also print a compact list of full IDs for easy copy/paste when terminal width causes truncation
+                        console?.WriteLine();
+                        console?.MarkupLine("[grey]IDs:[/]");
+                        foreach (var m in metas)
+                        {
+                            console?.MarkupLine(ConsoleStyles.Accent(m.Id));
+                        }
+                    }
             }
             catch (Exception ex)
             {

@@ -152,8 +152,9 @@ public class SessionsCommand : ChatCommand
             return CommandResult.Ok();
         }
 
-        var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Recent"));
-        table.AddColumn("ID");
+    var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Recent"));
+    var idWidth = sessions.Any() ? sessions.Max(s => s.Id.Length) : 8;
+    table.AddColumn(new TableColumn("ID").LeftAligned().NoWrap().Width(idWidth));
         table.AddColumn("Title");
         table.AddColumn(new TableColumn("Created").Centered());
         table.AddColumn(new TableColumn("Msgs").Centered());
@@ -171,7 +172,7 @@ public class SessionsCommand : ChatCommand
                 catch { }
             }
             table.AddRow(
-                ConsoleStyles.Dim(session.Id[..8] + "…"),
+                ConsoleStyles.Dim(session.Id),
                 ConsoleStyles.Accent(session.Title),
                 ConsoleStyles.Dim(session.CreatedAt.ToString("yyyy-MM-dd HH:mm")),
                 count.ToString());
