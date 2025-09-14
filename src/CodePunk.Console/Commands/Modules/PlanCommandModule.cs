@@ -93,6 +93,7 @@ internal sealed class PlanCommandModule : ICommandModule
                 }
                 if (json)
                 {
+                    var sampleCharsJson = (summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1);
                     var payload = new
                     {
                         schema = Rendering.Schemas.PlanCreateFromSessionV1,
@@ -102,7 +103,8 @@ internal sealed class PlanCommandModule : ICommandModule
                         source = "session",
                         messageSampleCount = summary.UsedMessages,
                         truncated = summary.Truncated,
-                        tokenUsageApprox = new { sampleChars = (summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1), approxTokens = ((summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1)) / 4 }
+                        rationale = string.IsNullOrWhiteSpace(summary.Rationale) ? null : summary.Rationale,
+                        tokenUsageApprox = new { sampleChars = sampleCharsJson, approxTokens = sampleCharsJson / 4 }
                     };
                     JsonOutput.Write(console, payload);
                     return;
@@ -280,7 +282,17 @@ internal sealed class PlanCommandModule : ICommandModule
             }
             if (json)
             {
-                JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, plan = rec });
+                var summary = rec.Summary == null ? null : new {
+                    rec.Summary.Source,
+                    rec.Summary.Goal,
+                    rec.Summary.CandidateFiles,
+                    rec.Summary.Rationale,
+                    rec.Summary.UsedMessages,
+                    rec.Summary.TotalMessages,
+                    rec.Summary.Truncated,
+                    tokenUsage = rec.Summary.TokenUsage == null ? null : new { rec.Summary.TokenUsage.SampleChars, rec.Summary.TokenUsage.ApproxTokens }
+                };
+                JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, planId = rec.Definition.Id, goal = rec.Definition.Goal, createdUtc = rec.Definition.CreatedUtc, fileChanges = rec.Files.Select(f => new { f.Path, f.IsDelete }).ToArray(), summary });
                 return;
             }
             var pretty = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
