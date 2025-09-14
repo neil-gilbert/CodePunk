@@ -36,7 +36,7 @@ public class HelpCommand : ChatCommand
             ("/load", new[] { "/l" }, "Load a previous chat session"),
             ("/models", Array.Empty<string>(), "Manage AI models and providers"),
             ("/new", new[] { "/n" }, "Start a new chat session"),
-            ("/plan", Array.Empty<string>(), "Manage change plans: /plan create | add | diff | apply"),
+            ("/plan", Array.Empty<string>(), "Manage change plans: create | add | diff | apply | generate --ai"),
             ("/quit", new[] { "/q", "/exit" }, "Exit the application"),
             ("/sessions", new[] { "/s", "/list" }, "Show recent chat sessions"),
             ("/usage", new[] { "/tokens" }, "Show accumulated token usage & estimated cost for current session"),

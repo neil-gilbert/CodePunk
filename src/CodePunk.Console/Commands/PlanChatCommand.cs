@@ -15,7 +15,7 @@ public class PlanChatCommand : ChatCommand
     }
 
     public override string Name => "plan";
-    public override string Description => "Manage change plans: /plan create | add | diff | apply";
+    public override string Description => "Manage change plans: /plan create | add | diff | apply | generate --ai";
     public override string[] Aliases => Array.Empty<string>();
 
     public override async Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)

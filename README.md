@@ -221,7 +221,7 @@ CodePunk is open source and welcomes contributions from engineers working in any
 git clone https://github.com/neil-gilbert/CodePunk.git
 cd CodePunk
 dotnet restore
-dotnet test  # Ensure tests pass (current: 146 passing, 1 skipped)
+dotnet test  # Ensure tests pass (current: 167 passing, 2 skipped)
 ```
 
 ## 🧭 CLI Command Reference
@@ -248,6 +248,7 @@ Current top-level commands (invoke with `codepunk <command>` or `dotnet run --pr
 | `plan add` | Stage file change or deletion | `--id <planId> --path <file> [--after-file <file>] [--rationale <text>] [--delete] [--json]` |
 | `plan diff` | Show unified diffs for staged changes | `--id <planId> [--json]` |
 | `plan apply` | Apply changes (drift-safe) | `--id <planId> [--dry-run] [--force] [--json]` |
+| `plan generate --ai` | AI-generate multi-file change plan | `--goal <text> [--provider <p>] [--model <m>] [--json]` |
 
 Invoking with no command launches the interactive chat loop.
 
@@ -265,6 +266,7 @@ All automation-friendly output includes a `schema` field. Current schemas:
 | Plan | `plan diff --json` | `plan.diff.v1` |
 | Plan | `plan show --json` | `plan.show.v1` |
 | Plan | `plan apply --json` | `plan.apply.v1` |
+| Plan | `plan generate --ai --json` | `plan.generate.ai.v1` |
 | Models | `models --json` | `models.list.v1` |
 
 Backward-compatible changes may add new fields; the `schema` value will change for breaking updates only.
@@ -403,6 +405,7 @@ Inside the chat loop you can use:
 | `/clear` | Clear current session and start fresh |
 | `/quit` | Exit the interactive loop |
 | `/plan` | Access plan subcommands inside chat (e.g. `/plan create --goal "Refactor API"`, `/plan add --id <id> --path src/Foo.cs --json`, `/plan apply --id <id> --dry-run`) |
+| `/plan generate --ai --goal "Improve logging"` | Generate an initial multi-file plan from a natural language goal |
 
 Planned (not yet implemented): `/provider <name>`, `/model <id>`, `/export <path>`, `/import <path>`.
 
@@ -441,6 +444,76 @@ Plans allow you to stage, review, and apply file changes systematically. You can
 - **JSON output**: Add `--json` for automation-friendly results
 - **Dry run**: Preview changes with `--dry-run` flag
 - **Force apply**: Override drift detection with `--force`
+
+### AI Plan Generation (Phase 2)
+
+Use `plan generate --ai --goal "<goal text>"` to have the configured AI provider propose a multi-file plan. The model returns a JSON object containing a `files` array. Each entry becomes a `PlanFileChange` with:
+ - `path`: Target relative file path
+ - `action`: `modify` (default) or `delete`
+ - `rationale`: Short explanation (may be truncated for safety)
+
+Example:
+```bash
+codepunk plan generate --ai --goal "Introduce structured logging and remove obsolete LoggerUtil class" --json
+```
+```json
+{
+  "schema": "plan.generate.ai.v1",
+  "planId": "20250914-abcd12",
+  "goal": "Introduce structured logging and remove obsolete LoggerUtil class",
+  "provider": "anthropic",
+  "model": "claude-3-5-sonnet",
+  "files": [
+    { "path": "src/Infrastructure/Logging/StructuredLogger.cs", "action": "modify", "rationale": "Add wrapper around existing logger with structured context" },
+    { "path": "src/Legacy/LoggerUtil.cs", "action": "delete", "rationale": "Deprecated after structured logger introduction", "diagnostics": ["UnsafePath"] }
+  ],
+  "generation": {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet",
+    "promptTokens": 812,
+    "completionTokens": 210,
+    "totalTokens": 1022,
+    "iterations": 1,
+    "safetyFlags": ["TruncatedContent"],
+    "createdUtc": "2025-09-14T10:10:10Z"
+  }
+}
+```
+
+Note: Field values above are illustrative. Safety flags and token usage appear only when available.
+
+#### Safety & Diagnostics
+
+AI-generated plans undergo validation:
+ - Path validation: rejects rooted paths or `..` segments (flag: `UnsafePath`)
+ - File count cap: configurable `MaxFiles` (returns error `TooManyFiles` if exceeded)
+ - Rationale truncation: per-file (`TruncatedContent`) and aggregate size (`TruncatedAggregate`) limits (UTF-8 safe)
+ - Secret pattern redaction: replaces configured patterns with `<REDACTED>` (`SecretRedacted`)
+ - JSON retry: configurable retries (`RetryInvalidOutput`) for malformed model output (error `ModelOutputInvalid` if persistent)
+
+Per-file diagnostics are listed under each file as `diagnostics`; aggregated unique flags appear in `generation.safetyFlags`.
+
+#### Configuration (`PlanAI` section)
+
+Configure generation limits in `appsettings.json` (or environment overlay):
+```json
+{
+  "PlanAI": {
+    "MaxFiles": 20,
+    "MaxPathLength": 260,
+    "MaxPerFileBytes": 16384,
+    "MaxTotalBytes": 131072,
+    "RetryInvalidOutput": 1,
+    "SecretPatterns": ["api_key=", "BEGIN PRIVATE KEY"]
+  }
+}
+```
+
+Flags: `--provider` and `--model` override defaults for a single generation. Omit `--json` for a human-readable table; include it for automation.
+
+Error Codes (JSON): `ModelUnavailable`, `ModelOutputInvalid`, `TooManyFiles`.
+
+Token usage (if available from the provider) is captured in `generation.promptTokens|completionTokens|totalTokens`.
 
 All flags and behaviors are identical to the top-level `plan` CLI group. Perfect for iterative development where you want to plan changes, discuss with AI, then apply systematically.
 
