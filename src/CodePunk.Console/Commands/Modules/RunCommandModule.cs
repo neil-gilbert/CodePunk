@@ -43,7 +43,7 @@ internal sealed class RunCommandModule : ICommandModule
             if (!string.IsNullOrWhiteSpace(message))
             {
                 string sessionId = session;
-                if (cont && !string.IsNullOrEmpty(session)) { console.MarkupLine("[red]Cannot use both --continue and --session[/]"); return; }
+                if (cont && !string.IsNullOrEmpty(session)) { if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine("[red]Cannot use both --continue and --session[/]"); return; }
                 if (cont)
                 {
                     var latest = await sessionStore.ListAsync(1);
@@ -54,7 +54,7 @@ internal sealed class RunCommandModule : ICommandModule
                 if (!string.IsNullOrWhiteSpace(agent))
                 {
                     var def = await agentStore.GetAsync(agent);
-                    if (def == null) { console.MarkupLine($"[red]Agent '{agent}' not found[/]"); }
+                    if (def == null) { if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"[red]Agent '{agent}' not found[/]"); }
                     else
                     {
                         activity?.SetTag("agent.name", def.Name);
@@ -77,6 +77,10 @@ internal sealed class RunCommandModule : ICommandModule
                     activity?.SetTag("tokens.prompt.approx", promptTokensApprox);
                     activity?.SetTag("tokens.completion.approx", completionTokensApprox);
                     activity?.SetTag("tokens.total.approx", promptTokensApprox + completionTokensApprox);
+                        if (!Rendering.OutputContext.IsQuiet())
+                        {
+                            console.MarkupLine($"[grey]Using session:[/] {sessionId}");
+                        }
                     if (json)
                     {
                         Rendering.JsonOutput.Write(console, new
@@ -113,7 +117,7 @@ internal sealed class RunCommandModule : ICommandModule
                 else
                 {
                     var shortId = sessionId.Length > 10 ? sessionId[..10] + "…" : sessionId;
-                    console.MarkupLine($"{ConsoleStyles.Dim("Session:")} {ConsoleStyles.Accent(shortId)}");
+                    if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"{ConsoleStyles.Dim("Session:")} {ConsoleStyles.Accent(shortId)}");
                 }
             }
             else { await chatLoop.RunAsync(); }

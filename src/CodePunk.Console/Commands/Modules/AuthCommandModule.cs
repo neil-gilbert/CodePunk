@@ -33,7 +33,7 @@ internal sealed class AuthCommandModule : ICommandModule
                     .Secret());
             }
             await store.SetAsync(provider, key);
-            console.MarkupLine($"{ConsoleStyles.Success("Stored")} {ConsoleStyles.Dim("provider")} {ConsoleStyles.Accent(provider)}");
+            if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"{ConsoleStyles.Success("Stored")} {ConsoleStyles.Dim("provider")} {ConsoleStyles.Accent(provider)}");
         }, providerOpt, keyOpt);
         var list = new Command("list", "List authenticated providers");
         list.SetHandler(async () =>
@@ -42,7 +42,7 @@ internal sealed class AuthCommandModule : ICommandModule
             var store = services.GetRequiredService<IAuthStore>();
             var map = await store.LoadAsync();
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (map.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("No providers authenticated.")); return; }
+            if (map.Count == 0) { if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("No providers authenticated.")); return; }
             var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Providers")).AddColumn("Name").AddColumn("Key");
             foreach (var kv in map)
             {
@@ -60,7 +60,7 @@ internal sealed class AuthCommandModule : ICommandModule
             var store = services.GetRequiredService<IAuthStore>();
             await store.RemoveAsync(provider);
             var console = services.GetRequiredService<IAnsiConsole>();
-            console.MarkupLine($"{ConsoleStyles.Success("Removed")} {ConsoleStyles.Accent(provider)}");
+            if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"{ConsoleStyles.Success("Removed")} {ConsoleStyles.Accent(provider)}");
         }, logoutProviderOpt);
         auth.AddCommand(login); auth.AddCommand(list); auth.AddCommand(logout); return auth;
     }

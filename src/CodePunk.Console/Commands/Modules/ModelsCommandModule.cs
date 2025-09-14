@@ -62,12 +62,12 @@ internal sealed class ModelsCommandModule : ICommandModule
                 if (providers.Count == 0)
                 {
                     var guidance = "No providers available. Authenticate first: codepunk auth login --provider <name> --key <APIKEY>";
-                    console?.MarkupLine(ConsoleStyles.Warn(guidance));
+                    if (!Rendering.OutputContext.IsQuiet()) console?.MarkupLine(ConsoleStyles.Warn(guidance));
                     return;
                 }
                 if (rows.Count == 0)
                 {
-                    console?.MarkupLine(ConsoleStyles.Warn("No models found."));
+                    if (!Rendering.OutputContext.IsQuiet()) console?.MarkupLine(ConsoleStyles.Warn("No models found."));
                     return;
                 }
                 var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Models"));
@@ -83,9 +83,9 @@ internal sealed class ModelsCommandModule : ICommandModule
                 {
                     var providerLabel = r.HasKey ? ConsoleStyles.Accent(r.Provider) : $"[grey]{r.Provider}[/]";
                     table.AddRow(providerLabel, r.Id, r.Name, r.Context.ToString(), r.MaxTokens.ToString(), r.Tools?"[green]✓[/]":"[grey]-[/]", r.Streaming?"[green]✓[/]":"[grey]-[/]", r.HasKey?"[green]✓[/]":"[red]✗[/]");
-                    ctx.Console.Out.Write($"{r.Provider}\t{r.Id}\t{r.Name}\n");
+                    if (!Rendering.OutputContext.IsQuiet()) ctx.Console.Out.Write($"{r.Provider}\t{r.Id}\t{r.Name}\n");
                 }
-                console?.Write(table);
+                if (!Rendering.OutputContext.IsQuiet()) console?.Write(table);
             }
             catch (Exception ex)
             {

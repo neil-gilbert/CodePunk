@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using CodePunk.Core.Abstractions;
 using CodePunk.Console.Planning;
 using CodePunk.Core.Chat;
+using CodePunk.Core.Models;
 using CodePunk.Console.Themes;
 using CodePunk.Console.Stores;
 using CodePunk.Console.Rendering;
@@ -28,25 +29,81 @@ internal sealed class PlanCommandModule : ICommandModule
     private static void BuildCreate(Command plan, IServiceProvider services)
     {
         var create = new Command("create", "Create a new empty plan record (AI generation TBD)");
-        var goalOpt = new Option<string>("--goal") { IsRequired = true };
+        var goalOpt = new Option<string>("--goal");
+        var fromSessionOpt = new Option<bool>("--from-session", description: "Create a plan by summarizing a session");
+        var sessionOpt = new Option<string>("--session", () => string.Empty, "Session id to summarize (defaults to most recent)");
+        var messagesOpt = new Option<int>("--messages", () => 20, "Maximum messages to sample from session");
+        var includeToolsOpt = new Option<bool>("--include-tools", () => false, "Include tool messages in the summarization");
         var jsonOpt = new Option<bool>("--json");
         create.AddOption(goalOpt);
+        create.AddOption(fromSessionOpt);
+        create.AddOption(sessionOpt);
+        create.AddOption(messagesOpt);
+        create.AddOption(includeToolsOpt);
         create.AddOption(jsonOpt);
         create.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
         {
             var goal = ctx.ParseResult.GetValueForOption(goalOpt);
+            var fromSession = ctx.ParseResult.GetValueForOption(fromSessionOpt);
+            var sessionId = ctx.ParseResult.GetValueForOption(sessionOpt);
+            var messages = ctx.ParseResult.GetValueForOption(messagesOpt);
+            var includeTools = ctx.ParseResult.GetValueForOption(includeToolsOpt);
             var json = ctx.ParseResult.GetValueForOption(jsonOpt);
             using var activity = Telemetry.ActivitySource.StartActivity("plan.create", ActivityKind.Client);
             var store = services.GetRequiredService<IPlanFileStore>();
-            var id = await store.CreateAsync(goal!);
             var console = services.GetRequiredService<IAnsiConsole>();
+
+            if (fromSession)
+            {
+                var summarizer = services.GetService<ISessionSummarizer>();
+                    if (summarizer == null)
+                    {
+                        if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanCreateFromSessionV1, error = new { code = "SummarizerUnavailable", message = "Session summarizer not registered" } }); return; }
+                        if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Session summarizer not available"));
+                        return;
+                    }
+                var opts = new SessionSummaryOptions { MaxMessages = messages, IncludeToolMessages = includeTools };
+                var summary = await summarizer.SummarizeAsync(string.IsNullOrWhiteSpace(sessionId)? null! : sessionId, opts);
+                if (summary == null)
+                {
+                    if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanCreateFromSessionV1, error = new { code = "SummaryUnavailable", message = "Could not infer a plan from session" } }); return; }
+                    if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("Could not infer a plan from the specified session; please provide --goal"));
+                    return;
+                }
+                var id = await store.CreateAsync(summary.Goal);
+                if (json)
+                {
+                    var payload = new
+                    {
+                        schema = Rendering.Schemas.PlanCreateFromSessionV1,
+                        planId = id,
+                        goal = summary.Goal,
+                        candidateFiles = summary.CandidateFiles,
+                        source = "session",
+                        messageSampleCount = summary.UsedMessages,
+                        truncated = summary.Truncated
+                    };
+                    JsonOutput.Write(console, payload);
+                    return;
+                }
+                if (!OutputContext.IsQuiet()) console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)} from session summary");
+                return;
+            }
+
+            // legacy/manual flow
+            if (string.IsNullOrWhiteSpace(goal))
+            {
+                if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanCreateV1, error = new { code = "MissingGoal", message = "--goal is required unless --from-session is used" } }); return; }
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("--goal is required unless --from-session is used")); return;
+            }
+            var newId = await store.CreateAsync(goal!);
             if (json)
             {
-                var payload = new { schema = Rendering.Schemas.PlanCreateV1, planId = id, goal };
+                var payload = new { schema = Rendering.Schemas.PlanCreateV1, planId = newId, goal };
                 JsonOutput.Write(console, payload);
                 return;
             }
-            console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)}");
+            if (!OutputContext.IsQuiet()) console.MarkupLine($"Created plan {ConsoleStyles.Accent(newId)}");
         });
         plan.AddCommand(create);
     }
@@ -76,7 +133,7 @@ internal sealed class PlanCommandModule : ICommandModule
             if (rec == null)
             {
                 if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
-                console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             string? beforeContent = null;
             if (!isDelete)
@@ -84,14 +141,14 @@ internal sealed class PlanCommandModule : ICommandModule
                 if (!File.Exists(path))
                 {
                     if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "FileMissing", message = $"File not found: {path}" } }); return; }
-                    console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return;
+                    if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error($"File not found: {path}")); return;
                 }
                 beforeContent = await File.ReadAllTextAsync(path);
             }
             string? afterContent = null;
             if (!isDelete && !string.IsNullOrWhiteSpace(afterFile))
             {
-                if (!File.Exists(afterFile)) { if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } }); return; } console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
+                if (!File.Exists(afterFile)) { if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanAddV1, error = new { code = "AfterFileMissing", message = $"After file not found: {afterFile}" } }); return; } if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error($"After file not found: {afterFile}")); return; }
                 afterContent = await File.ReadAllTextAsync(afterFile);
             }
             var existing = rec.Files.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
@@ -140,7 +197,7 @@ internal sealed class PlanCommandModule : ICommandModule
             else
             {
                 var mode = isDelete ? "for deletion" : (afterContent!=null?"with after version":"(before snapshot only)");
-                console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {mode}");
+                if (!OutputContext.IsQuiet()) console.MarkupLine($"Staged {ConsoleStyles.Accent(Path.GetFileName(path))} {mode}");
             }
         });
         plan.AddCommand(add);
@@ -165,7 +222,7 @@ internal sealed class PlanCommandModule : ICommandModule
                 return;
             }
             var console = services.GetService<IAnsiConsole>();
-            if (items.Count == 0) { console?.MarkupLine(ConsoleStyles.Warn("No plans found.")); return; }
+            if (items.Count == 0) { if (!OutputContext.IsQuiet()) console?.MarkupLine(ConsoleStyles.Warn("No plans found.")); return; }
             var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Plans"));
             table.AddColumn("Id").AddColumn("Created").AddColumn("Goal");
             foreach (var p in items)
@@ -173,7 +230,7 @@ internal sealed class PlanCommandModule : ICommandModule
                 var shortId = p.Id.Length>10? p.Id[..10]+"…":p.Id;
                 table.AddRow(ConsoleStyles.Accent(shortId), p.CreatedUtc.ToString("u"), p.Goal);
             }
-            console?.Write(table);
+            if (!OutputContext.IsQuiet()) console?.Write(table);
         });
         plan.AddCommand(list);
     }
@@ -195,7 +252,7 @@ internal sealed class PlanCommandModule : ICommandModule
             if (rec == null)
             {
                 if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
-                console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             if (json)
             {
@@ -203,7 +260,7 @@ internal sealed class PlanCommandModule : ICommandModule
                 return;
             }
             var pretty = System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            console.Write(new Panel(new Markup(ConsoleStyles.Escape(pretty))).Header(ConsoleStyles.PanelTitle(id)).RoundedBorder());
+            if (!OutputContext.IsQuiet()) console.Write(new Panel(new Markup(ConsoleStyles.Escape(pretty))).Header(ConsoleStyles.PanelTitle(id)).RoundedBorder());
         });
         plan.AddCommand(show);
     }
@@ -220,18 +277,18 @@ internal sealed class PlanCommandModule : ICommandModule
             var store = services.GetRequiredService<IPlanFileStore>();
             var rec = await store.GetAsync(id);
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (rec == null) { console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
+            if (rec == null) { if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
             if (json)
             {
                 JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanDiffV1, planId = id, diffs = rec.Files.Select(f => new { f.Path, f.Diff }).ToArray() });
                 return;
             }
-            if (rec.Files.Count == 0) { console.MarkupLine(ConsoleStyles.Warn("Plan has no file changes.")); return; }
+            if (rec.Files.Count == 0) { if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("Plan has no file changes.")); return; }
             foreach (var f in rec.Files)
             {
                 if (!string.IsNullOrWhiteSpace(f.Diff))
                 {
-                    console.Write(new Panel(new Markup("[silver]"+ConsoleStyles.Escape(f.Diff)+"[/]")).Header(ConsoleStyles.PanelTitle(f.Path)).RoundedBorder());
+                    if (!OutputContext.IsQuiet()) console.Write(new Panel(new Markup("[silver]"+ConsoleStyles.Escape(f.Diff)+"[/]")).Header(ConsoleStyles.PanelTitle(f.Path)).RoundedBorder());
                 }
             }
         }, diffIdOpt, diffJsonOpt);
@@ -259,12 +316,12 @@ internal sealed class PlanCommandModule : ICommandModule
             if (rec == null)
             {
                 if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanApplyV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
-                console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
             if (rec.Files.Count == 0)
             {
                 if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanApplyV1, error = new { code = "NoChanges", message = "No changes to apply" } }); return; }
-                console.MarkupLine(ConsoleStyles.Warn("No changes to apply.")); return;
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("No changes to apply.")); return;
             }
             int applied = 0; int skipped = 0; int drift = 0;
             var backupRoot = Path.Combine(ConfigPaths.PlanBackupsDirectory, id + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
@@ -349,8 +406,8 @@ internal sealed class PlanCommandModule : ICommandModule
             }
             else
             {
-                console.MarkupLine($"Applied {ConsoleStyles.Accent(applied.ToString())} changes (skipped {skipped}{driftNote}).");
-                if (drift>0 && !force) console.MarkupLine(ConsoleStyles.Warn("Drift detected; rerun with --force to override."));
+                if (!OutputContext.IsQuiet()) console.MarkupLine($"Applied {ConsoleStyles.Accent(applied.ToString())} changes (skipped {skipped}{driftNote}).");
+                if (drift>0 && !force && !OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("Drift detected; rerun with --force to override."));
             }
         });
         plan.AddCommand(apply);

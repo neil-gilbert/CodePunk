@@ -48,6 +48,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IFileHistoryService, FileHistoryService>();
 
+    // Session summarizer (heuristic/default)
+    services.AddScoped<ISessionSummarizer, HeuristicSessionSummarizer>();
+
         // Add prompt services
         services.AddSingleton<IPromptProvider, PromptProvider>();
 

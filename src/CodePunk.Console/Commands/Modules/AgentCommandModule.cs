@@ -44,11 +44,11 @@ internal sealed class AgentCommandModule : ICommandModule
             try
             {
                 await store.CreateAsync(def, overwrite);
-                console.MarkupLine($"{ConsoleStyles.Success("Agent created")} {ConsoleStyles.Accent(name)}");
+                if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"{ConsoleStyles.Success("Agent created")} {ConsoleStyles.Accent(name)}");
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
             {
-                console.MarkupLine(ConsoleStyles.Warn($"Agent '{name}' already exists. Use --overwrite to replace."));
+                if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn($"Agent '{name}' already exists. Use --overwrite to replace."));
             }
         }, nameOpt, providerOpt, modelOpt, promptFileOpt, overwriteOpt);
         var list = new Command("list", "List agents");
@@ -58,7 +58,7 @@ internal sealed class AgentCommandModule : ICommandModule
             var store = services.GetRequiredService<IAgentStore>();
             var defs = await store.ListAsync();
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (!defs.Any()) { console.MarkupLine(ConsoleStyles.Warn("No agents defined.")); return; }
+            if (!defs.Any()) { if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("No agents defined.")); return; }
             var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Agents"));
             table.AddColumn("Name").AddColumn("Provider").AddColumn("Model");
             foreach (var d in defs)
@@ -76,7 +76,7 @@ internal sealed class AgentCommandModule : ICommandModule
             var store = services.GetRequiredService<IAgentStore>();
             var def = await store.GetAsync(name);
             var console = services.GetRequiredService<IAnsiConsole>();
-            if (def == null) { console.MarkupLine(ConsoleStyles.Error("Agent not found")); return; }
+            if (def == null) { if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Agent not found")); return; }
             var json = System.Text.Json.JsonSerializer.Serialize(def, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             console.Write(new Panel(new Markup($"[grey]{ConsoleStyles.Escape(json)}[/]"))
                 .Header(ConsoleStyles.PanelTitle(def.Name))
@@ -91,7 +91,7 @@ internal sealed class AgentCommandModule : ICommandModule
             var store = services.GetRequiredService<IAgentStore>();
             await store.DeleteAsync(name);
             var console = services.GetRequiredService<IAnsiConsole>();
-            console.MarkupLine($"{ConsoleStyles.Success("Deleted")} {ConsoleStyles.Accent(name)}");
+            if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"{ConsoleStyles.Success("Deleted")} {ConsoleStyles.Accent(name)}");
         }, deleteNameOpt);
         agent.AddCommand(create); agent.AddCommand(list); agent.AddCommand(show); agent.AddCommand(delete); return agent;
     }

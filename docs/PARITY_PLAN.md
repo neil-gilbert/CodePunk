@@ -1,6 +1,6 @@
 # CodePunk CLI Parity Plan
 
-Version: 1.2.1
+Version: 1.2.2
 Last Updated: 2025-09-13
 
 This plan has been refocused on the core "coder CLI" workflow: create agents, run one‑shot prompts or continue sessions, generate and apply structured code change plans. Broader platform / automation features (HTTP server, semantic index, CI helpers, GitHub automation, advanced refactors) are deferred. The intent is to ship a lean but end‑to‑end useful developer loop rapidly to gather real user feedback.
@@ -29,6 +29,7 @@ Implemented:
 - Run command with one‑shot prompt, `--session`, `--continue`, `--agent`, `--model`, and JSON output (`run.execute.v1`).
 - Session file store + `sessions list|show|load` with JSON (`sessions.list.v1`, `sessions.show.v1`).
 - Plan subsystem: create/list/show/add/diff/apply with persistent plan records, unified diffs, drift detection, dry‑run + force, deletion staging (`--delete`), automatic backups, JSON schemas (`plan.create/add/list/show/diff/apply`).
+- Plan create-from-session (Phase 1 work started): new schema `plan.create.fromSession.v1` for session-driven plan creation (spec and schema constant added).
 - Unified JSON output helper + centralized schema constants (including models.list.v1).
 - Deletion support in plan add/apply (actions: deleted, dry-run-delete, skip-missing, delete-error).
 - Approximate token usage (char/4 heuristic) surfaced in run JSON output.
@@ -46,6 +47,7 @@ Completed (MVP Core): 1–6 from prior list (auth, sessions CLI, run JSON, plan 
 
 Remaining Near-Term:
 7. Token usage extension (decision: keep limited to run until AI-driven plan generation exists).
+8. Phase 1: `plan create --from-session` implementation (ISessionSummarizer, CLI flag, token accounting, component tests, spawn E2E harness).
 
 Stretch / Deferred: Front-matter prompt parser, extended telemetry toggle, others as previously deferred.
 
