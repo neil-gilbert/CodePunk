@@ -43,11 +43,11 @@ internal sealed class SessionsCommandModule : ICommandModule
                         return;
                     }
                 var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Sessions"));
-                table.AddColumn("Id"); table.AddColumn("Title"); table.AddColumn("Agent"); table.AddColumn("Model"); table.AddColumn(new TableColumn("Msgs").Centered()); table.AddColumn("Updated");
+                table.AddColumn(new TableColumn("Id").LeftAligned().NoWrap());
+                table.AddColumn("Title"); table.AddColumn("Agent"); table.AddColumn("Model"); table.AddColumn(new TableColumn("Msgs").Centered()); table.AddColumn("Updated");
                 foreach (var m in metas)
                 {
-                    var shortId = m.Id.Length > 10 ? m.Id[..10] + "…" : m.Id;
-                    table.AddRow(ConsoleStyles.Accent(shortId), m.Title ?? "(untitled)", string.IsNullOrWhiteSpace(m.Agent)?"[grey]-[/]":m.Agent!, m.Model ?? "[grey](default)[/]" , m.MessageCount.ToString(), m.LastUpdatedUtc.ToString("u"));
+                    table.AddRow(ConsoleStyles.Accent(m.Id), m.Title ?? "(untitled)", string.IsNullOrWhiteSpace(m.Agent)?"[grey]-[/]":m.Agent!, m.Model ?? "[grey](default)[/]" , m.MessageCount.ToString(), m.LastUpdatedUtc.ToString("u"));
                 }
                     if (!Rendering.OutputContext.IsQuiet()) console?.Write(table);
             }
