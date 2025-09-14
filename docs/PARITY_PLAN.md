@@ -1,6 +1,6 @@
 # CodePunk CLI Parity Plan
 
-Version: 1.2.3
+Version: 1.3.0 (Draft)
 Last Updated: 2025-09-14
 
 This plan has been refocused on the core "coder CLI" workflow: create agents, run one‑shot prompts or continue sessions, generate and apply structured code change plans. Broader platform / automation features (HTTP server, semantic index, CI helpers, GitHub automation, advanced refactors) are deferred. The intent is to ship a lean but end‑to‑end useful developer loop rapidly to gather real user feedback.
@@ -194,7 +194,14 @@ Phase A: Auth + Sessions + Run JSON – COMPLETE.
 Phase B: Plan persistence + Diff + Apply + Deletion – COMPLETE.
 Phase C: Unified JSON schemas – COMPLETE (token usage partially: run only).
 Phase D: Docs & integration scenario test – INITIAL (README + placeholder integration test present; full CLI E2E test pending optional).
-Phase E: Deferred roadmap features – NOT STARTED (by design).
+Phase E: Phase 1 Session-Derived Plan Generation – COMPLETE (v1.2.3).
+Phase F (NEW – AI Plan Generation Phase 2) – IN PROGRESS (spec drafted, implementation not started):
+  - Command: `plan generate --ai` (see `SPEC_PLAN_GENERATE_AI.md`).
+  - Objectives: Convert natural language goal or recent session into multi-file plan with proposed changes and safety metadata.
+  - Additions: `generation` metadata (provider, model, token usage, iterations, safety flags), extended `PlanFileChange` diagnostics.
+  - Safety: Path validation, file size caps, secret redaction, truncation flags.
+  - Non-goals (Phase 2 scope): automatic apply, advanced refactors, semantic ranking, embedding index.
+  - Success Criteria: Validated schema `plan.generate.ai.v1`, persistence of generation metadata, tests covering error codes (invalid JSON, unsafe path, size limits, secret redaction, retry), additive backward compatibility maintained.
 
 ---
 ## 14. Risk & Mitigation (Still Relevant)
@@ -228,6 +235,7 @@ Serve mode, semantic index/search, generate-tests, refactor rename, upgrade help
 
 ---
 ## 18. Change Log
+2025-09-14 (v1.3.0-draft): Began Phase 2 AI plan generation (added spec `SPEC_PLAN_GENERATE_AI.md`, updated parity plan with Phase F scope, version bump draft).
 2025-09-14 (v1.2.3): Completed Phase 1 session-driven plan creation: persisted PlanSummary (goal, candidateFiles, rationale, message counts, truncated flag, token usage heuristic). Added JSON `tokenUsageApprox` for `plan create --from-session`, backward compatibility tests, and updated specs.
 2025-09-13 (v1.2.1): Added models command implementation (`models.list.v1`), improved test robustness (ANSI escape stripping + JSON last-object detection), fallback JSON output path when no ANSI console, documentation updates.
 2025-09-13 (v1.2.0): Implemented run JSON output, sessions CLI JSON, plan persistence with diff/apply + deletion & backups, unified JSON schema constants, approximate token usage (run), README & docs updates.
