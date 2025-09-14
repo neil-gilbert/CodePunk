@@ -83,10 +83,10 @@ public class PlanCreateFromSession_QuietAndFallbackTests
 
     private class FakeSummarizer : CodePunk.Core.Abstractions.ISessionSummarizer
     {
-        public Task<CodePunk.Core.Models.SessionSummary> SummarizeAsync(string sessionId, CodePunk.Core.Models.SessionSummaryOptions opts, CancellationToken ct = default)
+        public Task<CodePunk.Core.Models.SessionSummary?> SummarizeAsync(string sessionId, CodePunk.Core.Models.SessionSummaryOptions opts, CancellationToken ct = default)
         {
             var s = new CodePunk.Core.Models.SessionSummary { Goal = "Fake goal", CandidateFiles = new List<string> { "Program.cs" }, Rationale = "Fake", Truncated = false, UsedMessages = 3, TotalMessages = 3 };
-            return Task.FromResult(s);
+            return Task.FromResult<CodePunk.Core.Models.SessionSummary?>(s);
         }
     }
 }
