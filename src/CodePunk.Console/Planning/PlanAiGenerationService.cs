@@ -3,6 +3,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
 using CodePunk.Console.Stores;
+using Microsoft.Extensions.Options;
 
 namespace CodePunk.Console.Planning;
 
@@ -28,15 +29,27 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
 {
     private readonly IPlanFileStore _store;
     private readonly ILLMService _llm;
-    private const int MaxFilesDefault = 20;
-    private const int MaxPathLength = 260;
-    private static readonly string[] SecretPatterns = new [] { "API_KEY=", "SECRET=", "PASSWORD=", "-----BEGIN" };
-    private const int RetryInvalidOutput = 1; // retries beyond first attempt
+    private readonly PlanAiGenerationOptions _options;
 
-    public PlanAiGenerationService(IPlanFileStore store, ILLMService llm)
+    public PlanAiGenerationService(IPlanFileStore store, ILLMService llm, IOptions<PlanAiGenerationOptions> opts)
     {
         _store = store;
         _llm = llm;
+        _options = opts.Value;
+    }
+
+    private static string TruncateUtf8(string value, int maxBytes)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        var utf8 = System.Text.Encoding.UTF8;
+        var bytes = utf8.GetBytes(value);
+        if (bytes.Length <= maxBytes) return value;
+        // Ensure we don't cut in middle of multi-byte sequence by walking back
+        int len = maxBytes;
+        while (len > 0 && (bytes[len - 1] & 0xC0) == 0x80) len--; // continuation byte 10xxxxxx
+        if (len <= 0) len = maxBytes; // fallback
+        var sliced = utf8.GetString(bytes, 0, len);
+        return sliced + "…";
     }
 
     public async Task<PlanGenerationResult> GenerateAsync(string goal, string? provider, string? model, CancellationToken ct = default)
@@ -61,14 +74,15 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             Message.Create(sessionId, MessageRole.User, new [] { new TextPart($"Goal: {goal}\nReturn a JSON object: {{ files: [ {{ path: 'README.md', action: 'modify', rationale: 'Short note' }} ] }}") })
         };
         var req = new LLMRequest { ModelId = modelId, Messages = messages };
-        LLMResponse resp;
+    LLMResponse? lastResponse = null;
         List<PlanFileChange> files = new();
         string? lastInvalidMessage = null;
-        for (int attempt = 0; attempt <= RetryInvalidOutput; attempt++)
+    for (int attempt = 0; attempt <= _options.RetryInvalidOutput; attempt++)
         {
             try
             {
-                resp = await prov.SendAsync(req, ct);
+                var resp = await prov.SendAsync(req, ct);
+                lastResponse = resp;
             }
             catch (Exception ex)
             {
@@ -77,7 +91,7 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             try
             {
                 files.Clear();
-                using var doc = JsonDocument.Parse(resp.Content);
+                using var doc = JsonDocument.Parse(lastResponse!.Content);
                 if (doc.RootElement.TryGetProperty("files", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var el in arr.EnumerateArray())
@@ -95,7 +109,7 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             catch (Exception ex)
             {
                 lastInvalidMessage = ex.Message;
-                if (attempt == RetryInvalidOutput)
+                if (attempt == _options.RetryInvalidOutput)
                 {
                     return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "ModelOutputInvalid", ErrorMessage = "Invalid JSON returned from model" };
                 }
@@ -109,13 +123,14 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
         }
         // Safety validation
         var diagnostics = new List<string>();
-        if (files.Count > MaxFilesDefault)
+        if (files.Count > _options.MaxFiles)
         {
-            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "TooManyFiles", ErrorMessage = $"File count {files.Count} exceeds limit {MaxFilesDefault}" };
+            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "TooManyFiles", ErrorMessage = $"File count {files.Count} exceeds limit {_options.MaxFiles}" };
         }
+        int aggregateBytes = 0;
         foreach (var f in files.ToList())
         {
-            if (f.Path.Length > MaxPathLength || f.Path.Contains("..") || Path.IsPathRooted(f.Path))
+            if (f.Path.Length > _options.MaxPathLength || f.Path.Contains("..") || Path.IsPathRooted(f.Path))
             {
                 f.Diagnostics ??= new List<string>();
                 f.Diagnostics.Add("UnsafePath");
@@ -124,7 +139,7 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             // Secret scan for rationale (basic)
             if (!string.IsNullOrWhiteSpace(f.Rationale))
             {
-                foreach (var pat in SecretPatterns)
+                foreach (var pat in _options.SecretPatterns)
                 {
                     if (f.Rationale.Contains(pat, StringComparison.OrdinalIgnoreCase))
                     {
@@ -134,21 +149,58 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
                     }
                 }
             }
+            // Truncation (we only have rationale text currently; future content fields may apply)
+            if (!string.IsNullOrEmpty(f.Rationale))
+            {
+                var bytes = System.Text.Encoding.UTF8.GetByteCount(f.Rationale);
+                if (bytes > _options.MaxPerFileBytes)
+                {
+                    f.Diagnostics ??= new List<string>();
+                    f.Diagnostics.Add("TruncatedContent");
+                    var truncated = TruncateUtf8(f.Rationale, _options.MaxPerFileBytes);
+                    f.Rationale = truncated;
+                }
+                aggregateBytes += Math.Min(bytes, _options.MaxPerFileBytes);
+            }
+            if (aggregateBytes > _options.MaxTotalBytes)
+            {
+                // mark overflow on this and remaining files, then break
+                f.Diagnostics ??= new List<string>();
+                f.Diagnostics.Add("TruncatedAggregate");
+                diagnostics.Add("TruncatedAggregate");
+                // Remove any remaining unprocessed files beyond current
+                var idx = files.IndexOf(f);
+                if (idx < files.Count - 1)
+                {
+                    files.RemoveRange(idx + 1, files.Count - (idx + 1));
+                }
+                break;
+            }
         }
         // Persist
         var id = await _store.CreateAsync(goal, ct);
         var rec = await _store.GetAsync(id, ct);
         if (rec != null)
         {
+            int? promptTokens = null;
+            int? completionTokens = null;
+            int? totalTokens = null;
+            var usage = lastResponse?.Usage;
+            if (usage != null)
+            {
+                promptTokens = usage.InputTokens;
+                completionTokens = usage.OutputTokens;
+                totalTokens = usage.TotalTokens;
+            }
             rec.Generation = new PlanGeneration
             {
                 Provider = prov.Name,
                 Model = modelId,
                 Iterations = 1,
-                PromptTokens = null,
-                CompletionTokens = null,
-                TotalTokens = null,
-                SafetyFlags = diagnostics.Distinct().ToList()
+                PromptTokens = promptTokens,
+                CompletionTokens = completionTokens,
+                TotalTokens = totalTokens,
+                SafetyFlags = diagnostics.Concat(files.SelectMany(x => x.Diagnostics ?? Enumerable.Empty<string>())).Distinct().ToList()
             };
             rec.Files.AddRange(files);
             await _store.SaveAsync(rec, ct);

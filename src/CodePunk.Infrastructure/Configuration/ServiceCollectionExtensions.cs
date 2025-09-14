@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         // Add chat services
         services.AddScoped<InteractiveChatSession>();
 
+
         // Add tools
         services.AddScoped<ITool, ReadFileTool>();
         services.AddScoped<ITool, WriteFileTool>();

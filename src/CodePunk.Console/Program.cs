@@ -47,7 +47,7 @@ builder.Services.AddOpenTelemetry().WithTracing(tp =>
 
 builder.Services.AddCodePunkServices(builder.Configuration);
 
-builder.Services.AddCodePunkConsole();
+builder.Services.AddCodePunkConsole(builder.Configuration);
 
 var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();
