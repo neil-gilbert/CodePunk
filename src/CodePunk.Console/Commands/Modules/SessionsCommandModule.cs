@@ -37,11 +37,11 @@ internal sealed class SessionsCommandModule : ICommandModule
                     return;
                 }
                 var console = services.GetService<IAnsiConsole>();
-                if (metas.Count == 0)
-                {
-                    console?.MarkupLine(ConsoleStyles.Warn("No sessions found."));
-                    return;
-                }
+                    if (metas.Count == 0)
+                    {
+                        if (!Rendering.OutputContext.IsQuiet()) console?.MarkupLine("[grey]No sessions found.[/]");
+                        return;
+                    }
                 var table = new Table().RoundedBorder().Title(ConsoleStyles.PanelTitle("Sessions"));
                 table.AddColumn("Id"); table.AddColumn("Title"); table.AddColumn("Agent"); table.AddColumn("Model"); table.AddColumn(new TableColumn("Msgs").Centered()); table.AddColumn("Updated");
                 foreach (var m in metas)
@@ -49,12 +49,12 @@ internal sealed class SessionsCommandModule : ICommandModule
                     var shortId = m.Id.Length > 10 ? m.Id[..10] + "…" : m.Id;
                     table.AddRow(ConsoleStyles.Accent(shortId), m.Title ?? "(untitled)", string.IsNullOrWhiteSpace(m.Agent)?"[grey]-[/]":m.Agent!, m.Model ?? "[grey](default)[/]" , m.MessageCount.ToString(), m.LastUpdatedUtc.ToString("u"));
                 }
-                console?.Write(table);
+                    if (!Rendering.OutputContext.IsQuiet()) console?.Write(table);
             }
             catch (Exception ex)
             {
                 ctx.ExitCode = 1;
-                services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("sessions list error: "+ConsoleStyles.Escape(ex.Message)));
+                if (!Rendering.OutputContext.IsQuiet()) services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("sessions list error: "+ConsoleStyles.Escape(ex.Message)));
             }
             await Task.CompletedTask;
         });
@@ -66,11 +66,11 @@ internal sealed class SessionsCommandModule : ICommandModule
         {
             using var activity = Telemetry.ActivitySource.StartActivity("sessions.show", ActivityKind.Client);
             var id = ctx.ParseResult.GetValueForOption(idOpt);
-            if (string.IsNullOrWhiteSpace(id)) { ctx.ExitCode = 1; services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
+            if (string.IsNullOrWhiteSpace(id)) { ctx.ExitCode = 1; if (!Rendering.OutputContext.IsQuiet()) services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
             var json = ctx.ParseResult.GetValueForOption(jsonOptShow);
             var store = services.GetRequiredService<ISessionFileStore>();
             var rec = await store.GetAsync(id);
-            if (rec == null) { ctx.ExitCode = 0; services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
+            if (rec == null) { ctx.ExitCode = 0; if (!Rendering.OutputContext.IsQuiet()) services.GetRequiredService<IAnsiConsole>().MarkupLine(ConsoleStyles.Error("Session not found")); return; }
             if (json)
             {
                 Rendering.JsonOutput.Write(services.GetRequiredService<IAnsiConsole>(), new { schema = Rendering.Schemas.SessionsShowV1, session = rec });
@@ -84,7 +84,7 @@ internal sealed class SessionsCommandModule : ICommandModule
             panelContent.AppendLine($"Model: {rec.Metadata.Model ?? "(default)"}");
             panelContent.AppendLine($"Messages: {rec.Messages.Count}");
             foreach (var m in rec.Messages) panelContent.AppendLine($"[{m.Role}] {m.Content.Replace("\n"," ")}");
-            console?.Write(new Panel(new Markup(ConsoleStyles.Escape(panelContent.ToString()))).Header(ConsoleStyles.PanelTitle(rec.Metadata.Title ?? rec.Metadata.Id)).RoundedBorder());
+            if (!Rendering.OutputContext.IsQuiet()) console?.Write(new Panel(new Markup(ConsoleStyles.Escape(panelContent.ToString()))).Header(ConsoleStyles.PanelTitle(rec.Metadata.Title ?? rec.Metadata.Id)).RoundedBorder());
         });
         var load = new Command("load", "Load a session id for reference");
         var loadIdOpt = new Option<string>("--id") { IsRequired = true };
@@ -98,9 +98,9 @@ internal sealed class SessionsCommandModule : ICommandModule
             if (rec == null)
             {
                 System.Environment.ExitCode = 0;
-                console.MarkupLine(ConsoleStyles.Error("Session not found"));
+                if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Session not found"));
             }
-            else console.MarkupLine($"Loaded {ConsoleStyles.Accent(rec.Metadata.Title ?? rec.Metadata.Id)}");
+            else if (!Rendering.OutputContext.IsQuiet()) console.MarkupLine($"Loaded {ConsoleStyles.Accent(rec.Metadata.Title ?? rec.Metadata.Id)}");
         }, loadIdOpt);
         sessions.AddCommand(list); sessions.AddCommand(show); sessions.AddCommand(load);
         return sessions;

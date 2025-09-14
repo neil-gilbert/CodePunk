@@ -16,6 +16,7 @@ CodePunk is an intelligent coding companion built for engineers working in any l
 - **Tool Integration**: Execute shell commands, read/write files, and interact with your development environment
 - **Session Persistence**: Never lose context - all conversations and file changes are tracked
 - **Built for Engineers**: No black boxes, full transparency, and designed for technical workflows
+- Quiet / JSON mode: many commands support machine-friendly output. Use `--json` or set `CODEPUNK_QUIET=1` to suppress decorative output and emit a single JSON payload for automation.
 
 ##  Quick Start
 
