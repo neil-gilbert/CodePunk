@@ -17,6 +17,7 @@ public static class ConsoleServiceCollectionExtensions
         services.AddSingleton<IAgentStore, AgentFileStore>();
         services.AddSingleton<ISessionFileStore, SessionFileStore>();
     services.AddSingleton<IPlanFileStore, PlanFileStore>();
+        services.AddScoped<Planning.IPlanAiGenerationService, Planning.PlanAiGenerationService>();
 
         services.AddScoped<InteractiveChatLoop>();
         services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });

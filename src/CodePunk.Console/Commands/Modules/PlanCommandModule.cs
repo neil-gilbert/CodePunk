@@ -453,15 +453,19 @@ internal sealed class PlanCommandModule : ICommandModule
     private static void BuildGenerateAI(Command plan, IServiceProvider services)
     {
         var gen = new Command("generate", "AI-assisted plan generation (Phase 2 WIP)");
-        var aiOpt = new Option<bool>("--ai", description: "Enable AI generation workflow") { IsRequired = true };
-        var goalOpt = new Option<string>("--goal", description: "High level goal for the plan");
+    var aiOpt = new Option<bool>("--ai", description: "Enable AI generation workflow") { IsRequired = true };
+    var goalOpt = new Option<string>("--goal", description: "High level goal for the plan");
+    var providerOpt = new Option<string>("--provider", description: "LLM provider (overrides default)");
+    var modelOpt = new Option<string>("--model", description: "LLM model (overrides default)");
         var jsonOpt = new Option<bool>("--json", description: "Emit JSON (schema: plan.generate.ai.v1)");
-        gen.AddOption(aiOpt); gen.AddOption(goalOpt); gen.AddOption(jsonOpt);
+    gen.AddOption(aiOpt); gen.AddOption(goalOpt); gen.AddOption(providerOpt); gen.AddOption(modelOpt); gen.AddOption(jsonOpt);
         gen.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
         {
             using var activity = Telemetry.ActivitySource.StartActivity("plan.generate.ai", ActivityKind.Client);
             var useAi = ctx.ParseResult.GetValueForOption(aiOpt);
             var goal = ctx.ParseResult.GetValueForOption(goalOpt);
+            var provider = ctx.ParseResult.GetValueForOption(providerOpt);
+            var model = ctx.ParseResult.GetValueForOption(modelOpt);
             var json = ctx.ParseResult.GetValueForOption(jsonOpt);
             var console = services.GetRequiredService<IAnsiConsole>();
             var store = services.GetRequiredService<IPlanFileStore>();
@@ -477,47 +481,38 @@ internal sealed class PlanCommandModule : ICommandModule
                 if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("--goal is required"));
                 return;
             }
-            // Create base plan record
-            var id = await store.CreateAsync(goal);
-            var rec = await store.GetAsync(id);
-            if (rec != null)
+            var service = services.GetRequiredService<Planning.IPlanAiGenerationService>();
+            var result = await service.GenerateAsync(goal!, provider, model);
+            if (!string.IsNullOrWhiteSpace(result.ErrorCode))
             {
-                rec.Generation = new PlanGeneration
+                if (json)
                 {
-                    Provider = "stub",
-                    Model = "stub-model",
-                    Iterations = 1,
-                    SafetyFlags = new List<string>(),
-                    CreatedUtc = DateTime.UtcNow
-                };
-                // Add a placeholder file change (empty diff) to illustrate structure
-                rec.Files.Add(new PlanFileChange
+                    JsonOutput.Write(console, new { schema = Schemas.PlanGenerateAIV1, error = new { code = result.ErrorCode, message = result.ErrorMessage } });
+                }
+                else if (!OutputContext.IsQuiet())
                 {
-                    Path = "README.md",
-                    Rationale = "Placeholder change (AI generation not yet implemented)",
-                    IsDelete = false,
-                    Generated = true,
-                    Diagnostics = new List<string> { "Stub" }
-                });
-                await store.SaveAsync(rec);
+                    console.MarkupLine(ConsoleStyles.Error(result.ErrorMessage ?? result.ErrorCode!));
+                }
+                return;
             }
             if (json)
             {
                 var payload = new
                 {
                     schema = Schemas.PlanGenerateAIV1,
-                    planId = id,
-                    goal,
-                    provider = rec?.Generation?.Provider,
-                    model = rec?.Generation?.Model,
-                    iterations = rec?.Generation?.Iterations,
-                    safetyFlags = rec?.Generation?.SafetyFlags ?? new List<string>(),
-                    files = rec?.Files.Select(f => new { f.Path, action = f.IsDelete ? "delete" : (f.AfterContent==null? "modify" : "modify"), rationale = f.Rationale, generated = f.Generated, diagnostics = f.Diagnostics }).ToArray() ?? Array.Empty<object>()
+                    planId = result.PlanId,
+                    goal = result.Goal,
+                    provider = result.Provider,
+                    model = result.Model,
+                    iterations = result.Generation?.Iterations,
+                    safetyFlags = result.Generation?.SafetyFlags ?? new List<string>(),
+                    tokenUsage = result.Generation?.TotalTokens != null ? new { prompt = result.Generation?.PromptTokens, completion = result.Generation?.CompletionTokens, total = result.Generation?.TotalTokens } : null,
+                    files = result.Files.Select(f => new { f.Path, action = f.IsDelete ? "delete" : "modify", rationale = f.Rationale, generated = f.Generated, diagnostics = f.Diagnostics }).ToArray()
                 };
                 JsonOutput.Write(console, payload);
                 return;
             }
-            if (!OutputContext.IsQuiet()) console.MarkupLine($"Created AI-generated (stub) plan {ConsoleStyles.Accent(id)}");
+            if (!OutputContext.IsQuiet()) console.MarkupLine($"Created AI-generated plan {ConsoleStyles.Accent(result.PlanId)} with {result.Files.Count} file(s)");
         });
         plan.AddCommand(gen);
     }
