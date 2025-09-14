@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
+using CodePunk.Core.Services;
 using CodePunk.Console.Stores;
 
 namespace CodePunk.Console.Planning;
@@ -27,6 +28,10 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
 {
     private readonly IPlanFileStore _store;
     private readonly ILLMService _llm;
+    private const int MaxFilesDefault = 20;
+    private const int MaxPathLength = 260;
+    private static readonly string[] SecretPatterns = new [] { "API_KEY=", "SECRET=", "PASSWORD=", "-----BEGIN" };
+    private const int RetryInvalidOutput = 1; // retries beyond first attempt
 
     public PlanAiGenerationService(IPlanFileStore store, ILLMService llm)
     {
@@ -49,45 +54,86 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
         var modelId = model ?? prov.Models.FirstOrDefault()?.Id ?? "default";
         // Build simple prompt (MVP)
         var systemPrompt = "You are an AI that outputs a JSON plan for multi-file code changes. Return JSON only.";
+        var sessionId = "plan-ai-gen"; // ephemeral synthetic session id for prompt construction
         var messages = new List<Message>
         {
-            new Message("system", systemPrompt),
-            new Message("user", $"Goal: {goal}\nReturn a JSON object: {{ files: [ {{ path: 'README.md', action: 'modify', rationale: 'Short note' }} ] }}")
+            Message.Create(sessionId, MessageRole.System, new [] { new TextPart(systemPrompt) }),
+            Message.Create(sessionId, MessageRole.User, new [] { new TextPart($"Goal: {goal}\nReturn a JSON object: {{ files: [ {{ path: 'README.md', action: 'modify', rationale: 'Short note' }} ] }}") })
         };
         var req = new LLMRequest { ModelId = modelId, Messages = messages };
         LLMResponse resp;
-        try
-        {
-            resp = await prov.SendAsync(req, ct);
-        }
-        catch (Exception ex)
-        {
-            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "ModelUnavailable", ErrorMessage = ex.Message };
-        }
-        // Parse naive JSON (fallback to stub if invalid)
         List<PlanFileChange> files = new();
-        try
+        string? lastInvalidMessage = null;
+        for (int attempt = 0; attempt <= RetryInvalidOutput; attempt++)
         {
-            using var doc = JsonDocument.Parse(resp.Content);
-            if (doc.RootElement.TryGetProperty("files", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            try
             {
-                foreach (var el in arr.EnumerateArray())
-                {
-                    var path = el.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
-                    var action = el.TryGetProperty("action", out var a) ? a.GetString() ?? "modify" : "modify";
-                    var rationale = el.TryGetProperty("rationale", out var r) ? r.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(path)) continue;
-                    files.Add(new PlanFileChange { Path = path, Rationale = rationale, IsDelete = action == "delete", Generated = true });
-                }
+                resp = await prov.SendAsync(req, ct);
             }
-        }
-        catch
-        {
-            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "ModelOutputInvalid", ErrorMessage = "Invalid JSON returned from model" };
+            catch (Exception ex)
+            {
+                return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "ModelUnavailable", ErrorMessage = ex.Message };
+            }
+            try
+            {
+                files.Clear();
+                using var doc = JsonDocument.Parse(resp.Content);
+                if (doc.RootElement.TryGetProperty("files", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var el in arr.EnumerateArray())
+                    {
+                        var path = el.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                        var action = el.TryGetProperty("action", out var a) ? a.GetString() ?? "modify" : "modify";
+                        var rationale = el.TryGetProperty("rationale", out var r) ? r.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(path)) continue;
+                        files.Add(new PlanFileChange { Path = path, Rationale = rationale, IsDelete = action == "delete", Generated = true });
+                    }
+                }
+                // success parse
+                break;
+            }
+            catch (Exception ex)
+            {
+                lastInvalidMessage = ex.Message;
+                if (attempt == RetryInvalidOutput)
+                {
+                    return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "ModelOutputInvalid", ErrorMessage = "Invalid JSON returned from model" };
+                }
+                await Task.Delay(50, ct); // minimal backoff
+                continue;
+            }
         }
         if (files.Count == 0)
         {
             files.Add(new PlanFileChange { Path = "README.md", Rationale = "No files parsed; placeholder", Generated = true });
+        }
+        // Safety validation
+        var diagnostics = new List<string>();
+        if (files.Count > MaxFilesDefault)
+        {
+            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = prov.Name, Model = modelId, Files = new(), ErrorCode = "TooManyFiles", ErrorMessage = $"File count {files.Count} exceeds limit {MaxFilesDefault}" };
+        }
+        foreach (var f in files.ToList())
+        {
+            if (f.Path.Length > MaxPathLength || f.Path.Contains("..") || Path.IsPathRooted(f.Path))
+            {
+                f.Diagnostics ??= new List<string>();
+                f.Diagnostics.Add("UnsafePath");
+                diagnostics.Add("UnsafePath");
+            }
+            // Secret scan for rationale (basic)
+            if (!string.IsNullOrWhiteSpace(f.Rationale))
+            {
+                foreach (var pat in SecretPatterns)
+                {
+                    if (f.Rationale.Contains(pat, StringComparison.OrdinalIgnoreCase))
+                    {
+                        f.Diagnostics ??= new List<string>();
+                        f.Diagnostics.Add("SecretRedacted");
+                        f.Rationale = f.Rationale.Replace(pat, "<REDACTED>", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+            }
         }
         // Persist
         var id = await _store.CreateAsync(goal, ct);
@@ -99,10 +145,10 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
                 Provider = prov.Name,
                 Model = modelId,
                 Iterations = 1,
-                PromptTokens = resp.Usage?.InputTokens,
-                CompletionTokens = resp.Usage?.OutputTokens,
-                TotalTokens = resp.Usage?.TotalTokens,
-                SafetyFlags = new List<string>()
+                PromptTokens = null,
+                CompletionTokens = null,
+                TotalTokens = null,
+                SafetyFlags = diagnostics.Distinct().ToList()
             };
             rec.Files.AddRange(files);
             await _store.SaveAsync(rec, ct);
@@ -115,7 +161,7 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             Model = modelId,
             Files = files,
             Generation = rec?.Generation,
-            RawModelContent = resp.Content
+            RawModelContent = null
         };
     }
 }
