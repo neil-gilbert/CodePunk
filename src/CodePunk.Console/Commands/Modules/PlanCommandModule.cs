@@ -23,6 +23,7 @@ internal sealed class PlanCommandModule : ICommandModule
         BuildShow(plan, services);
         BuildDiff(plan, services);
         BuildApply(plan, services);
+        BuildGenerateAI(plan, services);
         root.AddCommand(plan);
     }
 
@@ -447,5 +448,77 @@ internal sealed class PlanCommandModule : ICommandModule
             }
         });
         plan.AddCommand(apply);
+    }
+
+    private static void BuildGenerateAI(Command plan, IServiceProvider services)
+    {
+        var gen = new Command("generate", "AI-assisted plan generation (Phase 2 WIP)");
+        var aiOpt = new Option<bool>("--ai", description: "Enable AI generation workflow") { IsRequired = true };
+        var goalOpt = new Option<string>("--goal", description: "High level goal for the plan");
+        var jsonOpt = new Option<bool>("--json", description: "Emit JSON (schema: plan.generate.ai.v1)");
+        gen.AddOption(aiOpt); gen.AddOption(goalOpt); gen.AddOption(jsonOpt);
+        gen.SetHandler(async (System.CommandLine.Invocation.InvocationContext ctx) =>
+        {
+            using var activity = Telemetry.ActivitySource.StartActivity("plan.generate.ai", ActivityKind.Client);
+            var useAi = ctx.ParseResult.GetValueForOption(aiOpt);
+            var goal = ctx.ParseResult.GetValueForOption(goalOpt);
+            var json = ctx.ParseResult.GetValueForOption(jsonOpt);
+            var console = services.GetRequiredService<IAnsiConsole>();
+            var store = services.GetRequiredService<IPlanFileStore>();
+            if (!useAi)
+            {
+                if (json) { JsonOutput.Write(console, new { schema = Schemas.PlanGenerateAIV1, error = new { code = "MissingFlag", message = "--ai flag required" } }); return; }
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("--ai flag required"));
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(goal))
+            {
+                if (json) { JsonOutput.Write(console, new { schema = Schemas.PlanGenerateAIV1, error = new { code = "MissingGoal", message = "--goal is required for AI generation (session source TBD)" } }); return; }
+                if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("--goal is required"));
+                return;
+            }
+            // Create base plan record
+            var id = await store.CreateAsync(goal);
+            var rec = await store.GetAsync(id);
+            if (rec != null)
+            {
+                rec.Generation = new PlanGeneration
+                {
+                    Provider = "stub",
+                    Model = "stub-model",
+                    Iterations = 1,
+                    SafetyFlags = new List<string>(),
+                    CreatedUtc = DateTime.UtcNow
+                };
+                // Add a placeholder file change (empty diff) to illustrate structure
+                rec.Files.Add(new PlanFileChange
+                {
+                    Path = "README.md",
+                    Rationale = "Placeholder change (AI generation not yet implemented)",
+                    IsDelete = false,
+                    Generated = true,
+                    Diagnostics = new List<string> { "Stub" }
+                });
+                await store.SaveAsync(rec);
+            }
+            if (json)
+            {
+                var payload = new
+                {
+                    schema = Schemas.PlanGenerateAIV1,
+                    planId = id,
+                    goal,
+                    provider = rec?.Generation?.Provider,
+                    model = rec?.Generation?.Model,
+                    iterations = rec?.Generation?.Iterations,
+                    safetyFlags = rec?.Generation?.SafetyFlags ?? new List<string>(),
+                    files = rec?.Files.Select(f => new { f.Path, action = f.IsDelete ? "delete" : (f.AfterContent==null? "modify" : "modify"), rationale = f.Rationale, generated = f.Generated, diagnostics = f.Diagnostics }).ToArray() ?? Array.Empty<object>()
+                };
+                JsonOutput.Write(console, payload);
+                return;
+            }
+            if (!OutputContext.IsQuiet()) console.MarkupLine($"Created AI-generated (stub) plan {ConsoleStyles.Accent(id)}");
+        });
+        plan.AddCommand(gen);
     }
 }

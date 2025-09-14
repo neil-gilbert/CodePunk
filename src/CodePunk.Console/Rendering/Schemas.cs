@@ -13,4 +13,5 @@ public static class Schemas
     public const string PlanShowV1 = "plan.show.v1";
     public const string PlanDiffV1 = "plan.diff.v1";
     public const string ModelsListV1 = "models.list.v1";
+    public const string PlanGenerateAIV1 = "plan.generate.ai.v1";
 }

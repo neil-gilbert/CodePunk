@@ -26,6 +26,8 @@ public class PlanFileChange
     public string? BeforeContent { get; set; }
     public string? AfterContent { get; set; }
     public bool IsDelete { get; set; }
+    public bool? Generated { get; set; }
+    public List<string>? Diagnostics { get; set; }
 }
 
 public class PlanRecord
@@ -33,6 +35,7 @@ public class PlanRecord
     public PlanDefinition Definition { get; set; } = new();
     public List<PlanFileChange> Files { get; set; } = new();
     public PlanSummary? Summary { get; set; }
+    public PlanGeneration? Generation { get; set; }
 }
 
 public class PlanSummary
@@ -51,4 +54,17 @@ public class TokenUsageApprox
 {
     public int SampleChars { get; set; }
     public int ApproxTokens { get; set; }
+}
+
+public class PlanGeneration
+{
+    public string Provider { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public int? TotalTokens { get; set; }
+    public int Iterations { get; set; }
+    public List<string> SafetyFlags { get; set; } = new();
+    public string? RefinedFromPlanId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
