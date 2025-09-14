@@ -71,6 +71,26 @@ internal sealed class PlanCommandModule : ICommandModule
                     return;
                 }
                 var id = await store.CreateAsync(summary.Goal);
+                // Load record to attach summary metadata
+                var rec = await store.GetAsync(id);
+                if (rec != null)
+                {
+                    // Approx token usage (heuristic): sum chars of candidate messages sample (we only have counts, so approximate from goal + rationale + file paths)
+                    var sampleChars = (summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1);
+                    var approxTokens = sampleChars / 4;
+                    rec.Summary = new PlanSummary
+                    {
+                        Source = "session",
+                        Goal = summary.Goal ?? string.Empty,
+                        CandidateFiles = summary.CandidateFiles.ToList(),
+                        Rationale = summary.Rationale ?? string.Empty,
+                        UsedMessages = summary.UsedMessages,
+                        TotalMessages = summary.TotalMessages,
+                        Truncated = summary.Truncated,
+                        TokenUsage = new TokenUsageApprox { SampleChars = sampleChars, ApproxTokens = approxTokens }
+                    };
+                    await store.SaveAsync(rec);
+                }
                 if (json)
                 {
                     var payload = new
@@ -81,12 +101,16 @@ internal sealed class PlanCommandModule : ICommandModule
                         candidateFiles = summary.CandidateFiles,
                         source = "session",
                         messageSampleCount = summary.UsedMessages,
-                        truncated = summary.Truncated
+                        truncated = summary.Truncated,
+                        tokenUsageApprox = new { sampleChars = (summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1), approxTokens = ((summary.Goal?.Length ?? 0) + (summary.Rationale?.Length ?? 0) + summary.CandidateFiles.Sum(f => f.Length + 1)) / 4 }
                     };
                     JsonOutput.Write(console, payload);
                     return;
                 }
-                if (!OutputContext.IsQuiet()) console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)} from session summary");
+                if (!OutputContext.IsQuiet())
+                {
+                    console.MarkupLine($"Created plan {ConsoleStyles.Accent(id)} from session summary (files: {summary.CandidateFiles.Count}, truncated: {(summary.Truncated ? "yes" : "no")})");
+                }
                 return;
             }
 
