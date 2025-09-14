@@ -18,7 +18,7 @@ namespace CodePunk.Core.Services
             _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
         }
 
-        public async Task<SessionSummary> SummarizeAsync(string sessionId, SessionSummaryOptions options, CancellationToken ct = default)
+    public async Task<SessionSummary?> SummarizeAsync(string sessionId, SessionSummaryOptions options, CancellationToken ct = default)
         {
             var messages = (await _messageRepository.GetBySessionAsync(sessionId, ct).ConfigureAwait(false))?.ToList() ?? new List<Message>();
             var userAndAssistant = messages.Where(m => m.Role == MessageRole.User || m.Role == MessageRole.Assistant || (options.IncludeToolMessages && m.Role == MessageRole.Tool)).ToList();
@@ -31,7 +31,7 @@ namespace CodePunk.Core.Services
 
             string combinedText = string.Join("\n", sample.Select(m => ExtractTextFromMessage(m))).Trim();
 
-            string goal = InferGoalFromText(sample);
+            string? goal = InferGoalFromText(sample);
             if (string.IsNullOrWhiteSpace(goal))
                 return null;
 
@@ -56,7 +56,7 @@ namespace CodePunk.Core.Services
             return $"Based on recent conversation; last instruction: '{(lastText ?? goal)}'. Candidate files: {fileCount}.";
         }
 
-        private string InferGoalFromText(List<Message> sample)
+    private string? InferGoalFromText(List<Message> sample)
         {
             var directives = new[] { "add", "update", "fix", "refactor", "remove", "replace", "implement", "create", "cleanup", "rename" };
             for (int i = sample.Count - 1; i >= 0; i--)
@@ -70,7 +70,8 @@ namespace CodePunk.Core.Services
             }
 
             var last = sample.LastOrDefault(m => m.Role == MessageRole.User);
-            return last != null ? Shorten(ExtractTextFromMessage(last).Trim(), 200) : null;
+            if (last == null) return null;
+            return Shorten(ExtractTextFromMessage(last).Trim(), 200);
         }
 
         private string Shorten(string text, int max)

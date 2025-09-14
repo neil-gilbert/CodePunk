@@ -1,7 +1,7 @@
 # CodePunk CLI Parity Plan
 
-Version: 1.2.2
-Last Updated: 2025-09-13
+Version: 1.2.3
+Last Updated: 2025-09-14
 
 This plan has been refocused on the core "coder CLI" workflow: create agents, run one‑shot prompts or continue sessions, generate and apply structured code change plans. Broader platform / automation features (HTTP server, semantic index, CI helpers, GitHub automation, advanced refactors) are deferred. The intent is to ship a lean but end‑to‑end useful developer loop rapidly to gather real user feedback.
 
@@ -21,7 +21,7 @@ Global flags (initial subset): --model, --agent, --session / --continue, --help,
 Deferred (post-MVP): serve, github, upgrade, semantic index, generate-tests, refactor, prompts list/show (beyond internal layering), advanced security scan, config layering, OTel beyond minimal, plugin system, TUI, automation workflows.
 
 ---
-## 2. Current State Snapshot (v1.2.1)
+## 2. Current State Snapshot (v1.2.3)
 Implemented:
 - Interactive chat loop (REPL) launching when no args provided.
 - Auth key store + `auth` CLI (login/list/logout) with file persistence.
@@ -29,7 +29,7 @@ Implemented:
 - Run command with one‑shot prompt, `--session`, `--continue`, `--agent`, `--model`, and JSON output (`run.execute.v1`).
 - Session file store + `sessions list|show|load` with JSON (`sessions.list.v1`, `sessions.show.v1`).
 - Plan subsystem: create/list/show/add/diff/apply with persistent plan records, unified diffs, drift detection, dry‑run + force, deletion staging (`--delete`), automatic backups, JSON schemas (`plan.create/add/list/show/diff/apply`).
-- Plan create-from-session (Phase 1 work started): new schema `plan.create.fromSession.v1` for session-driven plan creation (spec and schema constant added).
+- Plan create-from-session (Phase 1 COMPLETE): heuristic summarizer wired to `--from-session` producing goal, candidateFiles, rationale, message counts, truncated flag; persisted `PlanSummary` (with source, counts, truncation) and approximate token usage (sampleChars/approxTokens) now stored and surfaced via JSON `tokenUsageApprox`.
 - Unified JSON output helper + centralized schema constants (including models.list.v1).
 - Deletion support in plan add/apply (actions: deleted, dry-run-delete, skip-missing, delete-error).
 - Approximate token usage (char/4 heuristic) surfaced in run JSON output.
@@ -37,7 +37,7 @@ Implemented:
 - Test stabilization: enhanced JSON extraction in console tests (ANSI stripping + last-object scan) to make schema parsing resilient to surrounding output.
 
 Remaining (MVP polish / minor):
-- Extend token usage to additional commands if/when they invoke model calls beyond run (currently plan create is manual goal only, so token usage is 0 / N/A).
+- (Decision) Token usage remains limited to run + from-session plan summary heuristic; further extension deferred until AI plan generation Phase 2.
 
 Deferred (post-MVP – unchanged): serve mode, semantic index/search, generate-tests, refactor, GitHub automation, upgrade, extended telemetry, advanced security scan, front-matter parser, plugin system, TUI.
 
@@ -46,8 +46,8 @@ Deferred (post-MVP – unchanged): serve mode, semantic index/search, generate-t
 Completed (MVP Core): 1–6 from prior list (auth, sessions CLI, run JSON, plan persistence + diff/apply, unified JSON output, deletion support).
 
 Remaining Near-Term:
-7. Token usage extension (decision: keep limited to run until AI-driven plan generation exists).
-8. Phase 1: `plan create --from-session` implementation (ISessionSummarizer, CLI flag, token accounting, component tests, spawn E2E harness).
+7. Phase 1: `plan create --from-session` implementation (COMPLETED v1.2.3) — includes persisted PlanSummary + tokenUsageApprox in JSON.
+8. (Next) Evaluate Phase 2: AI-augmented multi-file plan generation (deferred, not in MVP scope).
 
 Stretch / Deferred: Front-matter prompt parser, extended telemetry toggle, others as previously deferred.
 
@@ -103,12 +103,18 @@ Plan Record (internal storage – minimal file list model):
 ```
 Plan JSON output schemas (CLI) expose filtered projections per command; rely on `schema` field (see Section 8).
 
-Token Usage (approximation – run command only so far):
+Token Usage (approximation – run command + plan from-session heuristic):
 ```
+// run.execute.v1 (unchanged)
 {
   "promptTokensApprox": n,
   "completionTokensApprox": n,
   "totalTokensApprox": n
+}
+
+// plan.create.fromSession.v1 (added in 1.2.3)
+{
+  "tokenUsageApprox": { "sampleChars": n, "approxTokens": n }
 }
 ```
 
@@ -222,6 +228,7 @@ Serve mode, semantic index/search, generate-tests, refactor rename, upgrade help
 
 ---
 ## 18. Change Log
+2025-09-14 (v1.2.3): Completed Phase 1 session-driven plan creation: persisted PlanSummary (goal, candidateFiles, rationale, message counts, truncated flag, token usage heuristic). Added JSON `tokenUsageApprox` for `plan create --from-session`, backward compatibility tests, and updated specs.
 2025-09-13 (v1.2.1): Added models command implementation (`models.list.v1`), improved test robustness (ANSI escape stripping + JSON last-object detection), fallback JSON output path when no ANSI console, documentation updates.
 2025-09-13 (v1.2.0): Implemented run JSON output, sessions CLI JSON, plan persistence with diff/apply + deletion & backups, unified JSON schema constants, approximate token usage (run), README & docs updates.
 2025-09-13 (v1.1.0): Narrowed scope to coder CLI MVP; reclassified server/index/refactor/test/automation features as deferred; updated DoD & phased delivery.

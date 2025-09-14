@@ -32,4 +32,23 @@ public class PlanRecord
 {
     public PlanDefinition Definition { get; set; } = new();
     public List<PlanFileChange> Files { get; set; } = new();
+    public PlanSummary? Summary { get; set; }
+}
+
+public class PlanSummary
+{
+    public string Source { get; set; } = string.Empty; // e.g. "session"
+    public string Goal { get; set; } = string.Empty;
+    public List<string> CandidateFiles { get; set; } = new();
+    public string Rationale { get; set; } = string.Empty;
+    public int UsedMessages { get; set; }
+    public int TotalMessages { get; set; }
+    public bool Truncated { get; set; }
+    public TokenUsageApprox? TokenUsage { get; set; }
+}
+
+public class TokenUsageApprox
+{
+    public int SampleChars { get; set; }
+    public int ApproxTokens { get; set; }
 }
