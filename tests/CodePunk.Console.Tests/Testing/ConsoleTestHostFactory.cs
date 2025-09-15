@@ -53,6 +53,11 @@ public static class ConsoleTestHostFactory
                     }
                     return Stream();
                 });
+            // Provide basic provider resolution for tests
+            var stubProvider = new StubProvider();
+            llmMock.Setup(l => l.GetDefaultProvider()).Returns(stubProvider);
+            llmMock.Setup(l => l.GetProvider(It.IsAny<string>())).Returns((string? name) => stubProvider);
+            llmMock.Setup(l => l.GetProviders()).Returns(new[] { stubProvider });
         }
 
         var mockToolService = new Mock<IToolService>();
@@ -65,6 +70,24 @@ public static class ConsoleTestHostFactory
 
         var host = builder.Build();
         return new ConsoleTestHostContext(host, sessionStoreMock, agentStoreMock, mockSessionService, mockMessageService, llmMock, mockToolService);
+    }
+}
+
+// Minimal stub provider used by tests when a default provider is required
+internal class StubProvider : ILLMProvider
+{
+    public string Name => "stub";
+    public IReadOnlyList<LLMModel> Models { get; } = new[] { new LLMModel { Id = "stub-model", Name = "Stub Model" } };
+    public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Models);
+    public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default)
+    {
+        var json = "{ \"files\": [ { \"path\": \"README.md\", \"action\": \"modify\", \"rationale\": \"Placeholder rationale\" } ] }";
+        return Task.FromResult(new LLMResponse { Content = json, Usage = new LLMUsage { InputTokens = 1, OutputTokens = 1 } });
+    }
+    public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new LLMStreamChunk { Content = "{ \"files\": [ ", IsComplete = false };
+        await Task.CompletedTask;
     }
 }
 

@@ -1,4 +1,5 @@
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Services;
 using CodePunk.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -30,6 +31,10 @@ public class PlanGenerateAiTruncationTests : ConsoleTestBase
         public ILLMProvider GetDefaultProvider() => _p;
         public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => _p.SendAsync(request, cancellationToken);
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
+        public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.SendAsync(request, cancellationToken);
+        public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
+        public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, new []{ new TextPart("large") }));
+    public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _p.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() }, cancellationToken);
     }
 
     [Fact]

@@ -55,16 +55,20 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
     public async Task<PlanGenerationResult> GenerateAsync(string goal, string? provider, string? model, CancellationToken ct = default)
     {
         // Resolve provider & model
-        ILLMProvider prov;
+        ILLMProvider? prov = null;
         if (!string.IsNullOrWhiteSpace(provider))
         {
-            prov = _llm.GetProvider(provider!) ?? _llm.GetDefaultProvider();
+            try { prov = _llm.GetProvider(provider!); } catch { prov = null; }
         }
-        else
+        if (prov == null)
         {
-            prov = _llm.GetDefaultProvider();
+            try { prov = _llm.GetDefaultProvider(); } catch { prov = null; }
         }
-        var modelId = model ?? prov.Models.FirstOrDefault()?.Id ?? "default";
+        if (prov == null)
+        {
+            return new PlanGenerationResult { PlanId = string.Empty, Goal = goal, Provider = provider ?? string.Empty, Model = model ?? string.Empty, Files = new(), ErrorCode = "ModelUnavailable", ErrorMessage = "No LLM provider available" };
+        }
+        var modelId = model ?? prov.Models?.FirstOrDefault()?.Id ?? "default";
         // Build simple prompt (MVP)
         var systemPrompt = "You are an AI that outputs a JSON plan for multi-file code changes. Return JSON only.";
         var sessionId = "plan-ai-gen"; // ephemeral synthetic session id for prompt construction
@@ -91,7 +95,12 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
             try
             {
                 files.Clear();
-                using var doc = JsonDocument.Parse(lastResponse!.Content);
+                if (lastResponse == null || string.IsNullOrWhiteSpace(lastResponse.Content))
+                {
+                    lastInvalidMessage = "Empty response from model";
+                    throw new JsonException("Empty response");
+                }
+                using var doc = JsonDocument.Parse(lastResponse.Content);
                 if (doc.RootElement.TryGetProperty("files", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var el in arr.EnumerateArray())

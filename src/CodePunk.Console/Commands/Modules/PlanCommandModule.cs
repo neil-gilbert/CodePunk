@@ -281,17 +281,17 @@ internal sealed class PlanCommandModule : ICommandModule
                 if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, error = new { code = "PlanNotFound", message = "Plan not found" } }); return; }
                 if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return;
             }
-            if (json)
-            {
+                if (json)
+                {
                 var summary = rec.Summary == null ? null : new {
-                    rec.Summary.Source,
-                    rec.Summary.Goal,
-                    rec.Summary.CandidateFiles,
-                    rec.Summary.Rationale,
-                    rec.Summary.UsedMessages,
-                    rec.Summary.TotalMessages,
-                    rec.Summary.Truncated,
-                    tokenUsage = rec.Summary.TokenUsage == null ? null : new { rec.Summary.TokenUsage.SampleChars, rec.Summary.TokenUsage.ApproxTokens }
+                    Source = rec.Summary.Source,
+                    Goal = rec.Summary.Goal,
+                    CandidateFiles = rec.Summary.CandidateFiles,
+                    Rationale = rec.Summary.Rationale,
+                    UsedMessages = rec.Summary.UsedMessages,
+                    TotalMessages = rec.Summary.TotalMessages,
+                    Truncated = rec.Summary.Truncated,
+                    tokenUsage = rec.Summary.TokenUsage == null ? null : new { SampleChars = rec.Summary.TokenUsage.SampleChars, ApproxTokens = rec.Summary.TokenUsage.ApproxTokens }
                 };
                 JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanShowV1, planId = rec.Definition.Id, goal = rec.Definition.Goal, createdUtc = rec.Definition.CreatedUtc, fileChanges = rec.Files.Select(f => new { f.Path, f.IsDelete }).ToArray(), summary });
                 return;
@@ -506,8 +506,8 @@ internal sealed class PlanCommandModule : ICommandModule
                     model = result.Model,
                     iterations = result.Generation?.Iterations,
                     safetyFlags = result.Generation?.SafetyFlags ?? new List<string>(),
-                    tokenUsage = result.Generation?.TotalTokens != null ? new { prompt = result.Generation?.PromptTokens, completion = result.Generation?.CompletionTokens, total = result.Generation?.TotalTokens } : null,
-                    files = result.Files.Select(f => new { f.Path, action = f.IsDelete ? "delete" : "modify", rationale = f.Rationale, generated = f.Generated, diagnostics = f.Diagnostics }).ToArray()
+                    tokenUsage = new { prompt = result.Generation?.PromptTokens, completion = result.Generation?.CompletionTokens, total = result.Generation?.TotalTokens },
+                    files = result.Files.Select(f => new { path = f.Path, action = f.IsDelete ? "delete" : "modify", rationale = f.Rationale, generated = f.Generated, diagnostics = f.Diagnostics }).ToArray()
                 };
                 JsonOutput.Write(console, payload);
                 return;
