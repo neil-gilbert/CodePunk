@@ -81,11 +81,43 @@ internal class PlanAiGenerationService : IPlanAiGenerationService
     LLMResponse? lastResponse = null;
         List<PlanFileChange> files = new();
         string? lastInvalidMessage = null;
-    for (int attempt = 0; attempt <= _options.RetryInvalidOutput; attempt++)
+        for (int attempt = 0; attempt <= _options.RetryInvalidOutput; attempt++)
         {
             try
             {
-                var resp = await prov.SendAsync(req, ct);
+                // Prefer streaming providers when available
+                LLMResponse? resp = null;
+                if (prov.Models?.Any(m => m.SupportsStreaming) ?? false)
+                {
+                    var assembler = new CodePunk.Console.Utilities.StreamingJsonAssembler(_options.MaxTotalBytes);
+                    try
+                    {
+                        await foreach (var chunk in prov.StreamAsync(req, ct))
+                        {
+                            if (!string.IsNullOrEmpty(chunk.Content))
+                            {
+                                var b = System.Text.Encoding.UTF8.GetBytes(chunk.Content);
+                                assembler.Append(b.AsSpan());
+                            }
+                            if (assembler.TryGetNext(out var el, out var raw, out var diag))
+                            {
+                                resp = new LLMResponse { Content = raw, Usage = chunk.Usage };
+                                break;
+                            }
+                            if (assembler.HasOverflowed) break;
+                        }
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch
+                    {
+                        // ignore streaming errors and fall back to sync
+                        resp = null;
+                    }
+                }
+                if (resp == null)
+                {
+                    resp = await prov.SendAsync(req, ct);
+                }
                 lastResponse = resp;
             }
             catch (Exception ex)

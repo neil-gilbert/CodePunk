@@ -8,4 +8,5 @@ public class PlanAiGenerationOptions
     public int MaxTotalBytes { get; set; } = 128 * 1024;
     public int RetryInvalidOutput { get; set; } = 1;
     public string[] SecretPatterns { get; set; } = new [] { "API_KEY=", "SECRET=", "PASSWORD=", "-----BEGIN" };
+    public int MaxModelOutputBytes { get; set; } = 256 * 1024;
 }
