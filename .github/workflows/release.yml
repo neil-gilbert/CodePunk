@@ -57,9 +57,34 @@ jobs:
           name: codepunk-${{ matrix.rid }}
           path: artifacts/codepunk-${{ github.ref_name }}-${{ matrix.rid }}.zip
 
+  publish-aot-linux:
+    if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v')
+    needs: build-test-pack
+    runs-on: ubuntu-latest
+    env:
+      RID: linux-x64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Publish AOT ${RID}
+        run: |
+          dotnet publish src/CodePunk.Console/CodePunk.Console.csproj -c Release -r ${RID} \
+            /p:PublishAot=true /p:StripSymbols=true /p:EnableCompressionInSingleFile=true \
+            --self-contained true -o artifacts/aot-${RID}
+          cd artifacts/aot-${RID}
+          zip -r ../codepunk-${{ github.ref_name }}-${RID}-aot.zip .
+      - name: Upload AOT Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codepunk-aot-${{ env.RID }}
+          path: artifacts/codepunk-${{ github.ref_name }}-${{ env.RID }}-aot.zip
+
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ build-test-pack, publish-binaries ]
+    needs: [ build-test-pack, publish-binaries, publish-aot-linux ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
