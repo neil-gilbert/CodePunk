@@ -37,8 +37,8 @@ builder.Logging.AddSerilog(dispose: true);
 
 builder.Services.AddOpenTelemetry().WithTracing(tp =>
 {
-    tp.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("CodePunk.CLI"));
-    tp.AddSource("CodePunk.CLI");
+    tp.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("CodePunk"));
+    tp.AddSource("CodePunk");
     if (verbose)
     {
         tp.AddConsoleExporter();
