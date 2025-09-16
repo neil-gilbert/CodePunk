@@ -1,0 +1,86 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Restore
+        run: dotnet restore CodePunk.sln
+      - name: Build
+        run: dotnet build --configuration Release --no-restore CodePunk.sln
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity minimal CodePunk.sln
+      - name: Pack Tool
+        run: dotnet pack src/CodePunk.Console/CodePunk.Console.csproj -c Release -o artifacts/nuget /p:ContinuousIntegrationBuild=true
+      - name: Upload Tool Package
+        uses: actions/upload-artifact@v4
+        with:
+            name: tool-nuget-package
+            path: artifacts/nuget/*.nupkg
+
+  publish-binaries:
+    if: github.event_name != 'pull_request'
+    needs: build-test-pack
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [ 'linux-x64', 'linux-arm64', 'win-x64', 'osx-x64', 'osx-arm64' ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Publish ${{ matrix.rid }}
+        run: |
+          dotnet publish src/CodePunk.Console/CodePunk.Console.csproj -c Release -r ${{ matrix.rid }} \
+            --self-contained true /p:PublishSingleFile=true /p:EnableCompressionInSingleFile=true \
+            -o artifacts/${{ matrix.rid }}
+          cd artifacts/${{ matrix.rid }}
+          zip -r ../codepunk-${{ github.ref_name }}-${{ matrix.rid }}.zip .
+      - name: Upload Artifact ${{ matrix.rid }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codepunk-${{ matrix.rid }}
+          path: artifacts/codepunk-${{ github.ref_name }}-${{ matrix.rid }}.zip
+
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ build-test-pack, publish-binaries ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Generate Checksums
+        run: |
+          cd dist
+          find . -type f -name '*.zip' -exec shasum -a 256 {} \; > SHA256SUMS.txt
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/**/codepunk-*.zip
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push artifacts/nuget/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
