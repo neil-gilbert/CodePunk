@@ -43,20 +43,20 @@ dotnet run --project src/CodePunk.Console
 Once releases are published you can install the global tool (preferred):
 
 ```bash
-dotnet tool install -g CodePunk.CLI --prerelease   # omit --prerelease for stable
+dotnet tool install -g CodePunk --prerelease   # omit --prerelease for stable
 codepunk --help
 ```
 
 Upgrade:
 
 ```bash
-dotnet tool update -g CodePunk.CLI
+dotnet tool update -g CodePunk
 ```
 
 Uninstall:
 
 ```bash
-dotnet tool uninstall -g CodePunk.CLI
+dotnet tool uninstall -g CodePunk
 ```
 
 ### Self-Contained Single-File Binaries

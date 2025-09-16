@@ -6,7 +6,7 @@
     <RootNamespace>CodePunk.Console</RootNamespace>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>codepunk</ToolCommandName>
-    <PackageId>CodePunk.CLI</PackageId>
+  <PackageId>CodePunk</PackageId>
     <PackageTags>cli;ai;chat;codepunk</PackageTags>
     <PackageProjectUrl>https://github.com/neil-gilbert/CodePunk</PackageProjectUrl>
     <RepositoryUrl>https://github.com/neil-gilbert/CodePunk</RepositoryUrl>

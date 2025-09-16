@@ -45,7 +45,7 @@
 - README sections: Installation (Tool vs Binary), Upgrading, Verifying Checksums, AOT Caveats.
 
 ## Success Criteria
-- `dotnet tool install -g CodePunk.CLI` works.
+- `dotnet tool install -g CodePunk` works.
 - All matrix binaries start and run `--help` successfully.
 - CI pipeline completes in < 15 minutes for full release (target).
 - AOT variant boots noticeably faster (~30-50% improvement) vs self-contained.
