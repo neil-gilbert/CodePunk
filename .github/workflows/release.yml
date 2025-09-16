@@ -13,6 +13,11 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: write
+  packages: read
+  actions: read
+
 jobs:
   build-test-pack:
     runs-on: ubuntu-latest
