@@ -4,6 +4,32 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>CodePunk.Console</AssemblyName>
     <RootNamespace>CodePunk.Console</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>codepunk</ToolCommandName>
+    <PackageId>CodePunk.CLI</PackageId>
+    <PackageTags>cli;ai;chat;codepunk</PackageTags>
+    <PackageProjectUrl>https://github.com/neil-gilbert/CodePunk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/neil-gilbert/CodePunk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Neil Gilbert</Authors>
+    <Description>CodePunk interactive AI console tool.</Description>
+    <IncludeSymbols>false</IncludeSymbols>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableTrimming)' == 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <EventSourceSupport>false</EventSourceSupport>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <PublishAot>true</PublishAot>
+    <StripSymbols>true</StripSymbols>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <DefineConstants>$(DefineConstants);AOT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
