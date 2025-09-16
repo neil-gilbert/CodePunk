@@ -38,6 +38,78 @@ export ANTHROPIC_API_KEY="your-key-here"
 dotnet run --project src/CodePunk.Console
 ```
 
+### Distribution (Pre-built & Tool Install)
+
+Once releases are published you can install the global tool (preferred):
+
+```bash
+dotnet tool install -g CodePunk.CLI --prerelease   # omit --prerelease for stable
+codepunk --help
+```
+
+Upgrade:
+
+```bash
+dotnet tool update -g CodePunk.CLI
+```
+
+Uninstall:
+
+```bash
+dotnet tool uninstall -g CodePunk.CLI
+```
+
+### Self-Contained Single-File Binaries
+
+Releases also ship zipped single-file binaries for common platforms:
+
+| RID | File Example |
+|-----|--------------|
+| linux-x64 | `codepunk-v0.3.0-linux-x64.zip` |
+| linux-arm64 | `codepunk-v0.3.0-linux-arm64.zip` |
+| osx-x64 | `codepunk-v0.3.0-osx-x64.zip` |
+| osx-arm64 | `codepunk-v0.3.0-osx-arm64.zip` |
+| win-x64 | `codepunk-v0.3.0-win-x64.zip` |
+
+Usage (Linux/macOS):
+
+```bash
+unzip codepunk-v0.3.0-linux-x64.zip -d codepunk
+cd codepunk
+chmod +x codepunk
+./codepunk --help
+```
+
+Usage (Windows):
+
+```powershell
+Expand-Archive codepunk-v0.3.0-win-x64.zip -DestinationPath codepunk
+cd codepunk
+./codepunk.exe --help
+```
+
+### Native AOT (Experimental)
+
+Experimental AOT builds (beginning with `linux-x64`) are published with `-aot` suffix, e.g. `codepunk-v0.3.0-linux-x64-aot.zip`.
+
+Pros:
+- Faster cold start
+- Smaller memory footprint
+
+Trade-offs:
+- Larger build times
+- Some dynamic logging/telemetry features may be reduced
+
+Verify checksum (macOS/Linux):
+
+```bash
+shasum -a 256 codepunk-v0.3.0-linux-x64.zip | grep <expected>
+```
+
+### Embedding Commit / Version
+
+`codepunk --version` prints semantic version and short commit SHA for reproducibility.
+
 ### First Session
 
 ```bash
