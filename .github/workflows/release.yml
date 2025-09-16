@@ -120,4 +120,13 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          dotnet nuget push artifacts/nuget/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          echo "Listing downloaded dist directory contents for debugging" 
+          find dist -maxdepth 3 -type f -name '*.nupkg' -print || true
+          PACKAGE_GLOB="dist/tool-nuget-package/*.nupkg"
+          if ls $PACKAGE_GLOB 1> /dev/null 2>&1; then
+            echo "Found packages, pushing..."
+            dotnet nuget push $PACKAGE_GLOB --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          else
+            echo "No packages found at $PACKAGE_GLOB" >&2
+            exit 1
+          fi
