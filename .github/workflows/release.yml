@@ -6,6 +6,12 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      manual_note:
+        description: 'Optional note for manual run'
+        required: false
+        default: ''
 
 jobs:
   build-test-pack:
@@ -60,6 +66,7 @@ jobs:
   publish-aot-linux:
     if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v')
     needs: build-test-pack
+    continue-on-error: true
     runs-on: ubuntu-latest
     env:
       RID: linux-x64
@@ -108,4 +115,4 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          dotnet nuget push artifacts/nuget/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+          dotnet nuget push artifacts/nuget/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
