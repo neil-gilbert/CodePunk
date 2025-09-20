@@ -38,6 +38,9 @@ internal static class RootCommandFactory
             new PlanCommandModule()
         };
         foreach (var m in modules) m.Register(root, services);
+        // Custom help: intercept invocation when --help is present at root without subcommand
+        root.TreatUnmatchedTokensAsErrors = false; // allow help passthrough
+        root.AddGlobalOption(new Option<bool>("--ascii-logo", description: "Show ASCII logo in help (on by default)") { IsRequired = false });
         root.SetHandler(async () =>
         {
             var loop = services.GetRequiredService<InteractiveChatLoop>();

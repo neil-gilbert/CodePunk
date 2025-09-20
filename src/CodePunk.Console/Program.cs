@@ -56,13 +56,19 @@ var commandProcessor = host.Services.GetRequiredService<CommandProcessor>();
 
 var root = RootCommandFactory.Create(host.Services);
 
+var consoleService = host.Services.GetRequiredService<IAnsiConsole>();
 if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") != "1")
 {
-    var console = host.Services.GetRequiredService<IAnsiConsole>();
-    console.Write(ConsoleStyles.HeaderRule("Interactive Session"));
-    console.WriteLine();
-    console.MarkupLine(ConsoleStyles.Dim("Type /help for commands."));
-    console.WriteLine();
+    consoleService.Write(ConsoleStyles.HeaderRule("Interactive Session"));
+    consoleService.WriteLine();
+    consoleService.MarkupLine(ConsoleStyles.Dim("Type /help for commands."));
+    consoleService.WriteLine();
+}
+
+// Custom root help rendering
+if (args.Length > 0 && args.All(a => a == "--help" || a == "-h"))
+{
+    return HelpRenderer.ShowRootHelp(consoleService, root);
 }
 
 return await root.InvokeAsync(args);
