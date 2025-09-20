@@ -1,220 +1,106 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/codepunk-dark.png">
-  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=340 />
+  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=400 />
 </picture>
 
 # CodePunk
 
-Fast, local-first, terminal AI assistant & planning tool for real projects.
+**Your new coding bestie, now available in your favourite terminal.** Your tools, your code, and your workflows, wired into your LLM of choice.
 
-Think: chat + repeatable change planning + session history + provider freedom – all from a single CLI (`codepunk`).
+[![Latest Release](https://img.shields.io/github/v/release/neil-gilbert/CodePunk?include_prereleases&style=for-the-badge&logo=github)](https://github.com/neil-gilbert/CodePunk/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/neil-gilbert/CodePunk/release.yml?branch=main&style=for-the-badge&logo=githubactions)](https://github.com/neil-gilbert/CodePunk/actions)
+[![License](https://img.shields.io/github/license/neil-gilbert/CodePunk?style=for-the-badge)](https://github.com/neil-gilbert/CodePunk/blob/main/LICENSE)
 
----
+CodePunk is an intelligent, agentic coding companion built for engineers. It lives in your terminal, integrates with your tools, and connects to any AI provider to give you context-aware assistance without leaving your command line.
 
-## Install
+## Features
 
-Global .NET tool (prerelease shown):
+*   **Multi-Model**: Choose from a wide range of LLMs (OpenAI, Anthropic, etc.) or add your own via compatible APIs.
+*   **Flexible**: Switch LLMs mid-session while preserving context.
+*   **Session-Based**: Maintain multiple work sessions and contexts per project.
+*   **Tool-Enabled**: Natively uses your shell, reads/writes files, and can be extended with new tools.
+*   **Works Everywhere**: First-class support on macOS, Linux, and Windows (PowerShell and WSL).
+*   **Automation-Friendly**: Quiet/JSON mode (`--json`) for clean, scriptable output.
+
+## Installation
+
+The easiest way to install CodePunk is as a .NET global tool.
+
+**Prerequisites**: [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
 
 ```bash
-dotnet tool install -g CodePunk --prerelease
+# Install the tool from NuGet
+dotnet tool install --global CodePunk --prerelease
+
+# Start using it
 codepunk --help
 ```
 
-Upgrade:
+You can also download pre-built, self-contained binaries from the [Releases](https://github.com/neil-gilbert/CodePunk/releases) page.
+
+| RID           | Architecture | Download Example                        |
+|---------------|--------------|-----------------------------------------|
+| `linux-x64`   | Linux x64    | `codepunk-v0.1.0-alpha.2-linux-x64.zip`   |
+| `linux-arm64` | Linux ARM64  | `codepunk-v0.1.0-alpha.2-linux-arm64.zip` |
+| `osx-x64`     | macOS x64    | `codepunk-v0.1.0-alpha.2-osx-x64.zip`     |
+| `osx-arm64`   | macOS ARM64  | `codepunk-v0.1.0-alpha.2-osx-arm64.zip`   |
+| `win-x64`     | Windows x64  | `codepunk-v0.1.0-alpha.2-win-x64.zip`     |
+
+An experimental Native AOT build for `linux-x64` is also available for faster startup.
+
+## Getting Started
+
+The quickest way to get started is to grab an API key for your preferred provider and set it as an environment variable.
+
+| Environment Variable  | Provider   |
+|-----------------------|------------|
+| `OPENAI_API_KEY`      | OpenAI     |
+| `ANTHROPIC_API_KEY`   | Anthropic  |
+
+Once your key is set, you can start a new chat session:
 
 ```bash
-dotnet tool update -g CodePunk
+codepunk chat "How can I recursively find all *.js files in a directory?"
 ```
-
-Or grab a zipped binary from Releases (linux-x64/arm64, osx-x64/arm64, win-x64). AOT (linux-x64) builds are suffixed `-aot`.
-
----
-
-## Quick Start
-
-Set an API key (choose one provider you have):
-
-```bash
-export ANTHROPIC_API_KEY="..."   # or
-export OPENAI_API_KEY="..."
-```
-
-Launch interactive mode:
-
-```bash
-codepunk
-```
-Type messages; use `/help` for in-chat commands.
-
-One‑shot (non-interactive):
-
-```bash
-codepunk run "Summarize src/ for architecture"
-```
-
-Generate a structured multi‑file change plan:
-
-```bash
-codepunk plan generate --ai --goal "Add structured logging and remove obsolete LoggerUtil"
-```
-
-Stage & apply a file update safely:
-
-```bash
-codepunk plan add --id <planId> --path src/Foo.cs --after-file Foo.updated.cs
-codepunk plan diff --id <planId>
-codepunk plan apply --id <planId>
-```
-
-Everything is stored under `~/.config/codepunk` (or `%APPDATA%/CodePunk/` on Windows) for portability.
-
----
-
-## Features (Current)
-
-- Chat with multiple AI providers (switch without losing history)
-- Persistent sessions (list, show, reload)
-- JSON output for automation (`--json` on most commands)
-- File-aware planning: create, stage, diff & apply multi-file changes with drift detection + backups
-- AI plan generation (safe, validated JSON with diagnostics)
-- Model listing (`codepunk models`) filtered by available credentials
-- Quiet / machine mode via `--json` or `CODEPUNK_QUIET=1`
-- Native-like single-file binaries; experimental AOT for faster cold starts
-
----
-
-## CLI Overview
-
-Run `codepunk --help` or any subcommand with `--help`.
-
-Common commands:
-
-| Command | Purpose |
-|---------|---------|
-| `run [message]` | One-shot ask or interactive if omitted |
-| `sessions list|show|load` | Manage conversation history |
-| `models` | List models (can filter, JSON) |
-| `plan create` | Start a new plan (goal captured) |
-| `plan add` | Stage a modification or deletion |
-| `plan diff` | View pending changes (unified diffs) |
-| `plan apply` | Apply staged changes safely |
-| `plan generate --ai` | Ask AI to propose multi-file plan |
-
-Interactive slash commands mirror these (`/plan ...`, `/sessions`, `/help`).
-
-JSON schema identifiers (stable): `run.execute.v1`, `sessions.list.v1`, `sessions.show.v1`, `plan.create.v1`, `plan.add.v1`, `plan.diff.v1`, `plan.show.v1`, `plan.apply.v1`, `plan.generate.ai.v1`, `models.list.v1`.
-
----
-
-## Planning Workflow Example
-
-```bash
-codepunk plan create --goal "Refactor auth service to DI"
-codepunk plan add --id <planId> --path src/AuthService.cs --after-file AuthService.new.cs
-codepunk plan diff --id <planId>
-codepunk plan apply --id <planId> --dry-run   # verify
-codepunk plan apply --id <planId>
-```
-
-AI-assisted variant:
-
-```bash
-codepunk plan generate --ai --goal "Introduce structured logging" --json
-```
-
-Diagnostics may include: `UnsafePath`, `TooManyFiles`, `TruncatedContent`, `SecretRedacted`.
-
----
 
 ## Configuration
 
-Config file: `~/.config/codepunk/appsettings.json` (auto-created on first run). Environment variables override.
+CodePunk works great with no configuration. However, you can customize settings by creating a `codepunk.json` file in your project directory or a global config at `~/.config/codepunk/codepunk.json`.
 
-`PlanAI` section (example):
+*Coming soon: Detailed configuration options for providers, tools, and session management.*
 
-```json
-{
-  "PlanAI": {
-    "MaxFiles": 20,
-    "MaxPathLength": 260,
-    "MaxPerFileBytes": 16384,
-    "MaxTotalBytes": 131072,
-    "RetryInvalidOutput": 1,
-    "SecretPatterns": ["api_key=", "BEGIN PRIVATE KEY"]
-  }
-}
-```
+## Building from Source
 
-Provider keys via env:
+If you want to build from source, you'll need the [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
 
 ```bash
-export OPENAI_API_KEY=...
-export ANTHROPIC_API_KEY=...
-```
-
-Set verbose diagnostics:
-
-```bash
-export CODEPUNK_VERBOSE=1
-```
-
----
-
-## Release Artifacts
-
-Each tagged release publishes:
-
-- Global tool package (NuGet: `CodePunk`)
-- Zip archives per RID (`codepunk-vX.Y.Z-<rid>.zip`)
-- Optional AOT build (`-aot` suffix)
-- `SHA256SUMS.txt` (checksums)
-
-Verify checksum:
-
-```bash
-shasum -a 256 codepunk-v0.1.0-alpha.2-linux-x64.zip | grep <expected>
-```
-
-Version & commit:
-
-```bash
-codepunk --version
-```
-
----
-
-## Roadmap (Short-Term)
-
-- Additional AI providers (local + Azure OpenAI)
-- Incremental plan edits inside chat loop
-- Inline diff viewing improvements
-- Smarter model capability detection
-- Optional telemetry opt-in UX
-
-Ideas / bugs? Open an issue.
-
----
-
-## Contributing
-
-```bash
+# Clone the repository
 git clone https://github.com/neil-gilbert/CodePunk.git
 cd CodePunk
-dotnet restore
-dotnet test
+
+# Restore dependencies and build
+dotnet build
+
+# Run the console app
+dotnet run --project src/CodePunk.Console -- --help
 ```
 
-Send focused PRs; include tests where practical.
+## What's the vibe?
+
+We'd love to hear your thoughts on this project. Find a bug? Have a feature idea? Feel free to open an issue or join the discussion.
 
 ---
 
-## License
+Part of the **CodePunk** ecosystem. Built with ❤️ for developers.
 
-MIT – see `LICENSE`.
+## Why CodePunk?
 
----
-
-CodePunk – agentic coding assistance for engineers, by engineers.
+- **Universal Language Support**: Works with Python, JavaScript, Go, Rust, Java, C#, and any codebase
+- **Provider Agnostic**: Switch between OpenAI GPT-4o, Anthropic Claude, local models, or any AI provider
+- **Tool Integration**: Execute shell commands, read/write files, and interact with your development environment
+- **Session Persistence**: Never lose context - all conversations and file changes are tracked
+- **Built for Engineers**: No black boxes, full transparency, and designed for technical workflows
+- Quiet / JSON mode: many commands support machine-friendly output. Use `--json` or set `CODEPUNK_QUIET=1` to suppress decorative output and emit a single JSON payload for automation.
 
 ##  Quick Start
 
