@@ -6,31 +6,38 @@ internal static class HelpRenderer
 {
     public static int ShowRootHelp(IAnsiConsole console, RootCommand root)
     {
-        var figlet = new FigletText("CodePunk").Color(Color.MediumSpringGreen);
-        console.Write(new Panel(new Align(figlet, HorizontalAlignment.Left))
-            .Padding(0,0,0,0)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.MediumSpringGreen))
-            .Header("CodePunk"));
+    var width = console.Profile.Width;
+    var narrow = width > 0 && width < 70; // only collapse in extremely narrow terminals
+        RenderLogo(console, narrow);
 
         console.Write(new Rule("[bold yellow]Agentic Coding Assistant[/]").Centered());
         console.WriteLine();
         console.MarkupLine("[grey]Your tools, your code, your workflow, any model.[/]");
         console.WriteLine();
 
-        RenderQuickStart(console);
+        var hasAnyApiKey = HasAnyApiKey();
+        RenderQuickStart(console, narrow);
         RenderUsage(console);
         RenderCommands(console, root);
-        RenderAllCommands(console, root);
-        RenderExamples(console);
-        RenderSlash(console);
-        RenderEnv(console);
-        RenderJson(console);
+        if (!narrow)
+        {
+            RenderAllCommands(console, root);
+            RenderExamples(console);
+            RenderSlash(console);
+            RenderEnv(console);
+            RenderJson(console);
+            RenderGlobalOptions(console, root);
+            RenderCommandDetails(console, root, maxPerCommand: 6);
+        }
+        if (!hasAnyApiKey)
+        {
+            RenderNoKeyTip(console);
+        }
         RenderFooter(console);
         return 0;
     }
 
-    private static void RenderQuickStart(IAnsiConsole console)
+    private static void RenderQuickStart(IAnsiConsole console, bool narrow)
     {
         console.MarkupLine("[bold underline]Quick Start[/]");
         var table = new Table().NoBorder();
@@ -39,6 +46,8 @@ internal static class HelpRenderer
         table.AddRow("API Key", "[green]export OPENAI_API_KEY=sk-...[/]");
         table.AddRow("Chat", "[green]codepunk run \"Explain this code\"[/]");
         table.AddRow("Interactive", "[green]codepunk[/]");
+        if (!narrow)
+            table.AddRow("Plan", "[green]codepunk plan create --goal 'Improve logging'[/]");
         console.Write(table);
         console.WriteLine();
     }
@@ -136,13 +145,13 @@ internal static class HelpRenderer
     private static void RenderEnv(IAnsiConsole console)
     {
         console.MarkupLine("[bold underline]Environment Variables[/]");
-        var env = new Table().Border(TableBorder.None);
-        env.AddColumn("Variable");
-        env.AddColumn("Purpose");
-        env.AddRow("OPENAI_API_KEY", "Authenticate OpenAI models");
-        env.AddRow("ANTHROPIC_API_KEY", "Authenticate Anthropic models");
-        env.AddRow("CODEPUNK_VERBOSE=1", "Enable verbose logging + OTLP console exporter");
-        env.AddRow("CODEPUNK_QUIET=1", "Suppress decorative output");
+        var env = new Table().Border(TableBorder.Rounded);
+        env.AddColumn(new TableColumn("[bold]Variable[/]").Centered());
+        env.AddColumn(new TableColumn("[bold]Purpose[/]").Centered());
+        env.AddRow("[green]OPENAI_API_KEY[/]", "[white]Authenticate OpenAI models[/]");
+        env.AddRow("[green]ANTHROPIC_API_KEY[/]", "[white]Authenticate Anthropic models[/]");
+        env.AddRow("[green]CODEPUNK_VERBOSE=1[/]", "[white]Enable verbose logging + OTLP console exporter[/]");
+        env.AddRow("[green]CODEPUNK_QUIET=1[/]", "[white]Suppress decorative output[/]");
         console.Write(env);
         console.WriteLine();
     }
@@ -159,5 +168,122 @@ internal static class HelpRenderer
         console.Write(new Rule());
         console.MarkupLine("[grey]CodePunk v" + typeof(HelpRenderer).Assembly.GetName().Version + " — MIT Licensed[/]");
         console.MarkupLine("[grey]GitHub: https://github.com/neil-gilbert/CodePunk[/]");
+    }
+
+    private static void RenderGlobalOptions(IAnsiConsole console, RootCommand root)
+    {
+        console.MarkupLine("[bold underline]Global Options[/]");
+        var t = new Table().Border(TableBorder.Rounded);
+        t.AddColumn("Option"); t.AddColumn("Description");
+        foreach (var opt in root.Options)
+        {
+            var alias = opt.Aliases.FirstOrDefault() ?? opt.Name;
+            t.AddRow($"[green]{alias}[/]", opt.Description ?? "");
+        }
+        console.Write(t);
+        console.WriteLine();
+    }
+
+    private static void RenderCommandDetails(IAnsiConsole console, RootCommand root, int maxPerCommand)
+    {
+        console.MarkupLine("[bold underline]Command Details[/]");
+        foreach (var cmd in root.Children.OfType<Command>().Where(c => c.Name != root.Name))
+        {
+            var subTable = new Table().Border(TableBorder.Minimal).Title($"[yellow]{cmd.Name}[/]");
+            subTable.AddColumn("Argument/Option");
+            subTable.AddColumn("Description");
+            int count = 0;
+            foreach (var sym in cmd.Children)
+            {
+                if (sym is Option o)
+                {
+                    var alias = o.Aliases.FirstOrDefault() ?? o.Name;
+                    subTable.AddRow($"[green]{alias}[/]", o.Description ?? "");
+                    count++;
+                }
+                else if (sym is Argument a)
+                {
+                    subTable.AddRow($"[green]{a.Name}[/]", a.Description ?? "");
+                    count++;
+                }
+                if (count >= maxPerCommand) break;
+            }
+            if (count == 0)
+            {
+                subTable.AddRow("(none)", "");
+            }
+            console.Write(subTable);
+        }
+        console.WriteLine();
+    }
+
+    private static bool HasAnyApiKey()
+    {
+        return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")) ||
+               !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+    }
+
+    private static void RenderNoKeyTip(IAnsiConsole console)
+    {
+        var p = new Panel(new Markup("[yellow]No AI provider key detected.[/]\nSet [green]OPENAI_API_KEY[/] or run:\n[green]codepunk auth login --provider openai --key sk-...[/]"))
+            .Header("Next Step")
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(new Style(Color.Yellow));
+        console.Write(p);
+        console.WriteLine();
+    }
+
+    private static void RenderLogo(IAnsiConsole console, bool narrow)
+    {
+        if (narrow)
+        {
+            var mini = new Markup("[mediumspringgreen]CodePunk[/]");
+            console.Write(new Panel(mini).Collapse().Border(BoxBorder.Rounded).BorderStyle(new Style(Color.MediumSpringGreen)));
+            return;
+        }
+        var lines = GradientFigletLines();
+        var panelText = string.Join('\n', lines);
+        console.Write(new Panel(new Markup(panelText))
+            .Padding(0,0,0,0)
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(new Style(Color.MediumSpringGreen))
+            .Header("CodePunk"));
+    }
+
+    private static string[] GradientFigletLines()
+    {
+        // Pre-rendered figlet for "CodePunk" (standard font)
+        string[] raw = {
+            "  ____               _          ____                    _     ",
+            " / ___|   ___     __| |   ___  |  _ \\   _   _   _ __   | | __ ",
+            "| |      / _ \\   / _` |  / _ \\ | |_) | | | | | | '_ \\  | |/ / ",
+            "| |___  | (_) | | (_| | |  __/ |  __/  | |_| | | | | | | |   <  ",
+            " \\____|  \\___/   \\__,_|  \\___| |_|      \\__,_| |_| |_| |_|\\_\\ "
+        };
+        var palette = new[]{ Color.Red1, Color.Orange1, Color.Yellow1, Color.Chartreuse1, Color.Cyan1, Color.MediumPurple, Color.MediumVioletRed };
+        string ColorToken(Color c) => c.ToString().ToLowerInvariant();
+        var output = new string[raw.Length];
+        for (int li = 0; li < raw.Length; li++)
+        {
+            var line = raw[li];
+            int len = line.Length;
+            var sb = new System.Text.StringBuilder(len * 2);
+            string? active = null;
+            for (int i = 0; i < len; i++)
+            {
+                int idx = (int)Math.Round((double)i / Math.Max(1, len - 1) * (palette.Length - 1));
+                var token = ColorToken(palette[idx]);
+                if (active != token)
+                {
+                    if (active != null) sb.Append("[/]");
+                    sb.Append('[').Append(token).Append(']');
+                    active = token;
+                }
+                sb.Append(line[i]);
+            }
+            if (active != null) sb.Append("[/]");
+            output[li] = sb.ToString();
+        }
+        return output;
     }
 }
