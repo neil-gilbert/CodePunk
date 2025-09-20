@@ -1,22 +1,220 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/codepunk-dark.png">
-  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=400 />
+  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=340 />
 </picture>
 
 # CodePunk
 
-**An agentic coding assistant that works with your existing tools and any AI provider.**
+Fast, local-first, terminal AI assistant & planning tool for real projects.
 
-CodePunk is an intelligent coding companion built for engineers working in any language or framework. Whether you're debugging Python, refactoring JavaScript, analyzing Go, or architecting distributed systems, CodePunk provides context-aware assistance through a powerful terminal interface.
+Think: chat + repeatable change planning + session history + provider freedom – all from a single CLI (`codepunk`).
 
-## Why CodePunk?
+---
 
-- **Universal Language Support**: Works with Python, JavaScript, Go, Rust, Java, C#, and any codebase
-- **Provider Agnostic**: Switch between OpenAI GPT-4o, Anthropic Claude, local models, or any AI provider
-- **Tool Integration**: Execute shell commands, read/write files, and interact with your development environment
-- **Session Persistence**: Never lose context - all conversations and file changes are tracked
-- **Built for Engineers**: No black boxes, full transparency, and designed for technical workflows
-- Quiet / JSON mode: many commands support machine-friendly output. Use `--json` or set `CODEPUNK_QUIET=1` to suppress decorative output and emit a single JSON payload for automation.
+## Install
+
+Global .NET tool (prerelease shown):
+
+```bash
+dotnet tool install -g CodePunk --prerelease
+codepunk --help
+```
+
+Upgrade:
+
+```bash
+dotnet tool update -g CodePunk
+```
+
+Or grab a zipped binary from Releases (linux-x64/arm64, osx-x64/arm64, win-x64). AOT (linux-x64) builds are suffixed `-aot`.
+
+---
+
+## Quick Start
+
+Set an API key (choose one provider you have):
+
+```bash
+export ANTHROPIC_API_KEY="..."   # or
+export OPENAI_API_KEY="..."
+```
+
+Launch interactive mode:
+
+```bash
+codepunk
+```
+Type messages; use `/help` for in-chat commands.
+
+One‑shot (non-interactive):
+
+```bash
+codepunk run "Summarize src/ for architecture"
+```
+
+Generate a structured multi‑file change plan:
+
+```bash
+codepunk plan generate --ai --goal "Add structured logging and remove obsolete LoggerUtil"
+```
+
+Stage & apply a file update safely:
+
+```bash
+codepunk plan add --id <planId> --path src/Foo.cs --after-file Foo.updated.cs
+codepunk plan diff --id <planId>
+codepunk plan apply --id <planId>
+```
+
+Everything is stored under `~/.config/codepunk` (or `%APPDATA%/CodePunk/` on Windows) for portability.
+
+---
+
+## Features (Current)
+
+- Chat with multiple AI providers (switch without losing history)
+- Persistent sessions (list, show, reload)
+- JSON output for automation (`--json` on most commands)
+- File-aware planning: create, stage, diff & apply multi-file changes with drift detection + backups
+- AI plan generation (safe, validated JSON with diagnostics)
+- Model listing (`codepunk models`) filtered by available credentials
+- Quiet / machine mode via `--json` or `CODEPUNK_QUIET=1`
+- Native-like single-file binaries; experimental AOT for faster cold starts
+
+---
+
+## CLI Overview
+
+Run `codepunk --help` or any subcommand with `--help`.
+
+Common commands:
+
+| Command | Purpose |
+|---------|---------|
+| `run [message]` | One-shot ask or interactive if omitted |
+| `sessions list|show|load` | Manage conversation history |
+| `models` | List models (can filter, JSON) |
+| `plan create` | Start a new plan (goal captured) |
+| `plan add` | Stage a modification or deletion |
+| `plan diff` | View pending changes (unified diffs) |
+| `plan apply` | Apply staged changes safely |
+| `plan generate --ai` | Ask AI to propose multi-file plan |
+
+Interactive slash commands mirror these (`/plan ...`, `/sessions`, `/help`).
+
+JSON schema identifiers (stable): `run.execute.v1`, `sessions.list.v1`, `sessions.show.v1`, `plan.create.v1`, `plan.add.v1`, `plan.diff.v1`, `plan.show.v1`, `plan.apply.v1`, `plan.generate.ai.v1`, `models.list.v1`.
+
+---
+
+## Planning Workflow Example
+
+```bash
+codepunk plan create --goal "Refactor auth service to DI"
+codepunk plan add --id <planId> --path src/AuthService.cs --after-file AuthService.new.cs
+codepunk plan diff --id <planId>
+codepunk plan apply --id <planId> --dry-run   # verify
+codepunk plan apply --id <planId>
+```
+
+AI-assisted variant:
+
+```bash
+codepunk plan generate --ai --goal "Introduce structured logging" --json
+```
+
+Diagnostics may include: `UnsafePath`, `TooManyFiles`, `TruncatedContent`, `SecretRedacted`.
+
+---
+
+## Configuration
+
+Config file: `~/.config/codepunk/appsettings.json` (auto-created on first run). Environment variables override.
+
+`PlanAI` section (example):
+
+```json
+{
+  "PlanAI": {
+    "MaxFiles": 20,
+    "MaxPathLength": 260,
+    "MaxPerFileBytes": 16384,
+    "MaxTotalBytes": 131072,
+    "RetryInvalidOutput": 1,
+    "SecretPatterns": ["api_key=", "BEGIN PRIVATE KEY"]
+  }
+}
+```
+
+Provider keys via env:
+
+```bash
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+```
+
+Set verbose diagnostics:
+
+```bash
+export CODEPUNK_VERBOSE=1
+```
+
+---
+
+## Release Artifacts
+
+Each tagged release publishes:
+
+- Global tool package (NuGet: `CodePunk`)
+- Zip archives per RID (`codepunk-vX.Y.Z-<rid>.zip`)
+- Optional AOT build (`-aot` suffix)
+- `SHA256SUMS.txt` (checksums)
+
+Verify checksum:
+
+```bash
+shasum -a 256 codepunk-v0.1.0-alpha.2-linux-x64.zip | grep <expected>
+```
+
+Version & commit:
+
+```bash
+codepunk --version
+```
+
+---
+
+## Roadmap (Short-Term)
+
+- Additional AI providers (local + Azure OpenAI)
+- Incremental plan edits inside chat loop
+- Inline diff viewing improvements
+- Smarter model capability detection
+- Optional telemetry opt-in UX
+
+Ideas / bugs? Open an issue.
+
+---
+
+## Contributing
+
+```bash
+git clone https://github.com/neil-gilbert/CodePunk.git
+cd CodePunk
+dotnet restore
+dotnet test
+```
+
+Send focused PRs; include tests where practical.
+
+---
+
+## License
+
+MIT – see `LICENSE`.
+
+---
+
+CodePunk – agentic coding assistance for engineers, by engineers.
 
 ##  Quick Start
 
