@@ -3,7 +3,7 @@ CHANGELOG
 Unreleased
 - (placeholder)
 
-## 0.1.0-alpha.6 – 2025-09-21
+## 0.1.0-alpha.7 – 2025-09-21
 - Fix: Sanitizes API keys (remove CR/LF) at persistence and provider construction to prevent HTTP header newline exception during `/setup`.
 - Fix: Adjusted `LLMProviderFactory` to emit provider-specific not-configured messages matching tests.
 - Improvement: Suppressed verbose Anthropic provider info/debug logs by default; configurable via `CODEPUNK_PROVIDER_LOGLEVEL` env var.
