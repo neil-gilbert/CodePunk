@@ -52,7 +52,7 @@ public class LLMProviderFactory : ILLMProviderFactory
                 // Attempt to resolve first available explicitly
                 return GetProvider(available[0]);
             }
-            throw new InvalidOperationException("No providers are configured. Run /setup or set an API key.");
+            throw new InvalidOperationException("OpenAI provider is not configured. Please set the OPENAI_API_KEY environment variable or configure it in appsettings.json.");
         }
 
         return normalized switch
