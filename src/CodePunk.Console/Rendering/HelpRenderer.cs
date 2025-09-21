@@ -17,6 +17,8 @@ internal static class HelpRenderer
 
         var hasAnyApiKey = HasAnyApiKey();
         RenderQuickStart(console, narrow);
+    console.MarkupLine("[cyan]First time? Run /setup to configure a provider & key; use /reload after adding keys if needed.[/]");
+    console.WriteLine();
         RenderUsage(console);
         RenderCommands(console, root);
         if (!narrow)
@@ -131,6 +133,9 @@ internal static class HelpRenderer
             ("/help", "Show interactive help"),
             ("/sessions", "List recent sessions"),
             ("/load <id>", "Load a previous session"),
+            ("/setup", "Guided setup (provider + key)"),
+            ("/reload", "Reload providers after adding keys"),
+            ("/providers", "List providers & persistence paths"),
             ("/plan create --goal ...", "Create a plan"),
             ("/plan add --id --path", "Stage change in plan"),
             ("/plan diff --id", "View staged diffs"),

@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 using Microsoft.Extensions.Configuration;
 using CodePunk.Console.Planning;
+using CodePunk.Console.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace CodePunk.Console.Configuration;
 
@@ -18,7 +20,9 @@ public static class ConsoleServiceCollectionExtensions
         services.AddSingleton<IAuthStore, AuthFileStore>();
         services.AddSingleton<IAgentStore, AgentFileStore>();
         services.AddSingleton<ISessionFileStore, SessionFileStore>();
-    services.AddSingleton<IPlanFileStore, PlanFileStore>();
+        services.AddSingleton<IPlanFileStore, PlanFileStore>();
+        services.AddSingleton<IDefaultsStore, DefaultsFileStore>();
+        services.AddSingleton<ProviderBootstrap>(sp => new ProviderBootstrap(services, configuration!, sp.GetRequiredService<IAuthStore>(), sp.GetRequiredService<ILogger<ProviderBootstrap>>()));
         if (configuration != null)
         {
             services.Configure<PlanAiGenerationOptions>(configuration.GetSection("PlanAI"));
@@ -39,6 +43,9 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, UsageCommand>();
         services.AddTransient<ChatCommand, ModelsChatCommand>();
         services.AddTransient<ChatCommand, PlanChatCommand>();
+    services.AddTransient<ChatCommand, SetupCommand>();
+        services.AddTransient<ChatCommand, ReloadCommand>();
+    services.AddTransient<ChatCommand, ProvidersCommand>();
         services.AddSingleton<CommandProcessor>();
         return services;
     }

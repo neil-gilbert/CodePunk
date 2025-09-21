@@ -50,14 +50,30 @@ An experimental Native AOT build for `linux-x64` is also available for faster st
 
 ## Getting Started
 
-The quickest way to get started is to grab an API key for your preferred provider and set it as an environment variable.
+The quickest way to get started is to run the interactive setup inside the app (no environment vars required).
+
+```bash
+codepunk          # then type /setup in interactive mode
+```
+
+You will be guided to:
+
+1. Pick a provider (Anthropic for now; additional providers coming) even if no keys are yet configured
+2. Paste your API key (stored locally in a secure JSON file: `auth.json` with chmod 600 on *nix)
+3. Pick a default model (if multiple)
+
+After that you can immediately chat, list models, or create plans. If you add keys outside the app later, use `/reload` to dynamically re-scan and register providers without restarting.
+
+### Optional: Environment Variables (Legacy / CI Friendly)
+
+You can still export keys for non-interactive or CI usage:
 
 | Environment Variable  | Provider   |
 |-----------------------|------------|
 | `OPENAI_API_KEY`      | OpenAI     |
 | `ANTHROPIC_API_KEY`   | Anthropic  |
 
-Once your key is set, you can start a new chat session:
+Once your key (or stored credential) is set, you can start a new chat session:
 
 ```bash
 codepunk chat "How can I recursively find all *.js files in a directory?"
@@ -68,6 +84,25 @@ codepunk chat "How can I recursively find all *.js files in a directory?"
 CodePunk works great with no configuration. However, you can customize settings by creating a `codepunk.json` file in your project directory or a global config at `~/.config/codepunk/codepunk.json`.
 
 *Coming soon: Detailed configuration options for providers, tools, and session management.*
+
+### Persisted State Files
+
+| File | Purpose | Location (Unix) | Notes |
+|------|---------|-----------------|-------|
+| `auth.json` | Stored provider API keys | `~/.config/codepunk/` | Created via `/setup` or `auth login`; chmod 600 attempted |
+| `defaults.json` | Last selected provider + model | `~/.config/codepunk/` | Loaded on startup to set session defaults |
+| `codepunk.db` | Chat/session/plan persistence (SQLite) | App working dir | Auto-created |
+
+You may delete these to fully reset local state. On next launch, run `/setup` again.
+
+### Dynamic Provider Bootstrap
+
+Providers are registered at startup from (in order):
+1. Environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+2. `appsettings*.json` configuration values
+3. Persisted credentials in `auth.json`
+
+If you add a key after launch, run `/reload` to apply it without restarting.
 
 ## Building from Source
 
@@ -209,6 +244,7 @@ shasum -a 256 codepunk-v0.3.0-linux-x64.zip | grep <expected>
 # Get context-aware help for any language
 > Explain this Kubernetes deployment and suggest improvements
 > /file k8s-deployment.yaml
+> /reload   # (only needed if you added keys manually mid-session)
 ```
 
 ## 🔌 AI Provider Support
@@ -254,6 +290,14 @@ export OPENAI_API_KEY="your-openai-key-here"
 export ANTHROPIC_API_KEY="your-anthropic-key-here"
 
 # Set default provider in appsettings.json or switch dynamically
+```
+
+### Runtime Reload
+
+At any time in interactive mode:
+
+```bash
+/reload   # Re-scan env/config/auth.json and register newly available providers
 ```
 
 ### Provider Comparison
@@ -395,6 +439,7 @@ Current top-level commands (invoke with `codepunk <command>` or `dotnet run --pr
 | `agent show` | Show agent definition (JSON) | `--name <agent>` |
 | `agent delete` | Delete agent | `--name <agent>` |
 | `models` | List provider models (table or JSON) | `--json`, `--available-only` |
+| `reload` | Dynamically reload provider registrations | *(none)* |
 | `sessions list` | List recent sessions (table or JSON) | `--take <n>`, `--json` |
 | `sessions show` | Show a session transcript | `--id <sessionId>`, `--json` |
 | `sessions load` | Mark a session as the active context (prints status) | `--id <sessionId>` |

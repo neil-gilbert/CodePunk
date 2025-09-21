@@ -36,8 +36,8 @@ public class InteractiveChatSession
         IMessageService messageService,
         ILLMService llmService,
         IToolService toolService,
-    ILogger<InteractiveChatSession> logger,
-    IChatSessionEventStream? eventStream = null,
+        ILogger<InteractiveChatSession> logger,
+        IChatSessionEventStream? eventStream = null,
         IChatSessionOptions? options = null)
     {
         _sessionService = sessionService;
@@ -45,7 +45,7 @@ public class InteractiveChatSession
         _llmService = llmService;
         _toolService = toolService;
         _logger = logger;
-    _eventStream = eventStream ?? new ChatSessionEventStream();
+        _eventStream = eventStream ?? new ChatSessionEventStream();
         _options = options ?? new ChatSessionOptions();
     }
 

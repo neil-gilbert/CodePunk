@@ -3,6 +3,8 @@ using Spectre.Console;
 using System.Linq;
 using CodePunk.Console.Themes;
 using CodePunk.Core.Chat;
+using CodePunk.Console.Stores;
+using CodePunk.Core.Services;
 
 namespace CodePunk.Console.Commands;
 
@@ -35,6 +37,9 @@ public class HelpCommand : ChatCommand
             ("/help", new[] { "/h", "/?" }, "Shows available commands and their usage"),
             ("/load", new[] { "/l" }, "Load a previous chat session"),
             ("/models", Array.Empty<string>(), "Manage AI models and providers"),
+            ("/setup", Array.Empty<string>(), "Guided first-time setup (select provider & store key)"),
+            ("/reload", Array.Empty<string>(), "Reload providers after adding keys"),
+            ("/providers", Array.Empty<string>(), "List providers & persistence paths"),
             ("/new", new[] { "/n" }, "Start a new chat session"),
             ("/plan", Array.Empty<string>(), "Manage change plans: create | add | diff | apply | generate --ai"),
             ("/quit", new[] { "/q", "/exit" }, "Exit the application"),
@@ -53,7 +58,9 @@ public class HelpCommand : ChatCommand
 
         console.Write(table);
         console.WriteLine();
-    console.MarkupLine(ConsoleStyles.Dim("Tip: Type your message directly to chat with AI, or use commands starting with /"));
+        console.MarkupLine(ConsoleStyles.Accent("First time here? Run /setup to configure a provider & store your API key."));
+        console.WriteLine();
+        console.MarkupLine(ConsoleStyles.Dim("Tip: Type your message directly to chat with AI, or use commands starting with /"));
         console.WriteLine();
 
         return Task.FromResult(CommandResult.Ok());
@@ -343,5 +350,199 @@ public class UsageCommand : ChatCommand
         AnsiConsole.Write(usagePanel);
         AnsiConsole.WriteLine();
         return Task.FromResult(CommandResult.Ok());
+    }
+}
+
+public class ProvidersCommand : ChatCommand
+{
+    private readonly ILLMService _llmService;
+    private readonly InteractiveChatSession _chatSession;
+    public override string Name => "providers";
+    public override string Description => "List registered providers, defaults, and persistence paths";
+    public override string[] Aliases => Array.Empty<string>();
+    public ProvidersCommand(ILLMService llmService, InteractiveChatSession chatSession)
+    {
+        _llmService = llmService;
+        _chatSession = chatSession;
+    }
+    public override Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
+    {
+        var console = AnsiConsole.Console;
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Provider");
+        table.AddColumn("Models (sample)");
+        var providers = _llmService.GetProviders();
+        if (providers.Count == 0)
+        {
+            console.MarkupLine(ConsoleStyles.Dim("No providers currently registered. Run /setup or /reload after adding keys."));
+        }
+        else
+        {
+            foreach (var p in providers)
+            {
+                var sample = string.Join(", ", p.Models.Take(5).Select(m => m.Id));
+                table.AddRow(p.Name, string.IsNullOrEmpty(sample) ? "(none)" : sample);
+            }
+            console.Write(table);
+        }
+        console.WriteLine();
+        console.MarkupLine($"Default Provider: [green]{_chatSession.DefaultProvider}[/]  Model: [green]{_chatSession.DefaultModel}[/]");
+        // Show persistence paths
+        try
+        {
+            console.MarkupLine(ConsoleStyles.Dim($"Auth file: {Stores.ConfigPaths.AuthFile}"));
+            console.MarkupLine(ConsoleStyles.Dim($"Defaults file: {Stores.ConfigPaths.DefaultsFile}"));
+        }
+        catch { }
+        console.WriteLine();
+        return Task.FromResult(CommandResult.Ok());
+    }
+}
+
+public class ReloadCommand : ChatCommand
+{
+    private readonly IServiceProvider _sp;
+    public override string Name => "reload";
+    public override string Description => "Reload provider registrations from stored credentials";
+    public override string[] Aliases => Array.Empty<string>();
+    public ReloadCommand(IServiceProvider sp) { _sp = sp; }
+    public override async Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var bootstrap = _sp.GetService(typeof(CodePunk.Console.Providers.ProviderBootstrap)) as CodePunk.Console.Providers.ProviderBootstrap;
+            if (bootstrap == null) return CommandResult.Error("Bootstrap service unavailable.");
+            await bootstrap.ApplyAsync(cancellationToken);
+            return CommandResult.Ok("Providers reloaded. Use /models to list models.");
+        }
+        catch (Exception ex)
+        {
+            return CommandResult.Error("Reload failed: " + ex.Message);
+        }
+    }
+}
+
+/// <summary>
+/// Guided first-time setup: select provider, enter API key, set defaults.
+/// </summary>
+public class SetupCommand : ChatCommand
+{
+    private readonly IAuthStore _authStore;
+    private readonly IDefaultsStore _defaultsStore;
+    private readonly InteractiveChatSession _chatSession;
+    private readonly ILLMService _llmService;
+    public override string Name => "setup";
+    public override string Description => "Guided first-time setup (select provider & store key)";
+    public override string[] Aliases => Array.Empty<string>();
+
+    private readonly IServiceProvider? _serviceProvider;
+    public SetupCommand(IAuthStore authStore, IDefaultsStore defaultsStore, InteractiveChatSession chatSession, ILLMService llmService, IServiceProvider serviceProvider)
+    {
+        _authStore = authStore;
+        _defaultsStore = defaultsStore;
+        _chatSession = chatSession;
+        _llmService = llmService;
+        _serviceProvider = serviceProvider;
+    }
+
+    public override async Task<CommandResult> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
+    {
+        var console = AnsiConsole.Console;
+        console.WriteLine();
+        console.Write(ConsoleStyles.HeaderRule("First-Time Setup"));
+        console.MarkupLine(ConsoleStyles.Dim("This will store an API key locally (auth.json) and set defaults."));
+        console.WriteLine();
+
+        // Provider selection
+        var providers = _llmService.GetProviders();
+        List<string> providerNames;
+        if (providers.Count == 0)
+        {
+            // Static fallback list when none registered yet (hide openai until implemented)
+            providerNames = new List<string> { "anthropic" };
+            console.MarkupLine(ConsoleStyles.Dim("No providers registered yet. We'll register one after you enter a key."));
+        }
+        else
+        {
+            providerNames = providers.Select(p => p.Name)
+                .Where(n => !string.Equals(n, "openai", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (providerNames.Count == 0)
+            {
+                providerNames = new List<string> { "anthropic" };
+            }
+        }
+        var provider = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title(ConsoleStyles.Accent("Select provider"))
+                .PageSize(10)
+                .AddChoices(providerNames));
+
+        // API key prompt (masked)
+        var key = AnsiConsole.Prompt(
+            new TextPrompt<string>(ConsoleStyles.Accent($"Enter API key for {provider}:"))
+                .PromptStyle("silver")
+                .Secret());
+        try
+        {
+            await _authStore.SetAsync(provider, key, cancellationToken);
+            console.MarkupLine(ConsoleStyles.Success("Stored") + " key for " + ConsoleStyles.Accent(provider));
+        }
+        catch (Exception ex)
+        {
+            return CommandResult.Error("Failed to store key: " + ex.Message);
+        }
+
+        // Default model selection (if multiple models)
+        // If provider list was initially empty we need to attempt a dynamic bootstrap now
+        if (providers.Count == 0 && _serviceProvider != null)
+        {
+            try
+            {
+                var bootstrap = _serviceProvider.GetService(typeof(CodePunk.Console.Providers.ProviderBootstrap)) as CodePunk.Console.Providers.ProviderBootstrap;
+                if (bootstrap != null)
+                {
+                    await bootstrap.ApplyAsync(cancellationToken);
+                }
+            }
+            catch { }
+            providers = _llmService.GetProviders();
+        }
+
+        var selectedProvider = providers.FirstOrDefault(p => string.Equals(p.Name, provider, StringComparison.OrdinalIgnoreCase));
+        List<string> models = new();
+        if (selectedProvider != null)
+        {
+            models = selectedProvider.Models.Select(m => m.Id).ToList();
+        }
+        string? model = null;
+        if (models.Count > 1)
+        {
+            model = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title(ConsoleStyles.Accent($"Select default model ({provider})"))
+                    .PageSize(10)
+                    .AddChoices(models));
+        }
+        else if (models.Count == 1)
+        {
+            model = models[0];
+        }
+
+    _chatSession.UpdateDefaults(provider, model);
+    try { await _defaultsStore.SaveAsync(new CodePunkDefaults(provider, model), cancellationToken); } catch { }
+
+        var summary = new Table().NoBorder();
+        summary.AddColumn("Item"); summary.AddColumn("Value");
+        summary.AddRow("Provider", ConsoleStyles.Accent(provider));
+        if (!string.IsNullOrWhiteSpace(model)) summary.AddRow("Model", ConsoleStyles.Accent(model));
+        summary.AddRow("Auth File", Stores.ConfigPaths.AuthFile);
+        summary.AddRow("Defaults File", Stores.ConfigPaths.DefaultsFile);
+        console.Write(summary);
+        console.WriteLine();
+        console.MarkupLine(ConsoleStyles.Dim("Setup complete. You can change later with /use or update keys with auth commands."));
+        console.WriteLine();
+        return CommandResult.Ok();
     }
 }

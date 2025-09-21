@@ -24,15 +24,41 @@ public class LLMProviderFactory : ILLMProviderFactory
     public ILLMProvider GetProvider(string? providerName = null)
     {
         providerName ??= _configuration["AI:DefaultProvider"] ?? "openai";
+        var normalized = providerName.ToLowerInvariant();
 
-        return providerName.ToLowerInvariant() switch
+        // Try dynamic registry first
+        if (RuntimeProviderRegistry.TryGet(normalized, out var dynamicProvider))
         {
-            "openai" => _serviceProvider.GetService<CodePunk.Core.Providers.OpenAIProvider>()
-                ?? throw new InvalidOperationException("OpenAI provider is not configured. Please set the OPENAI_API_KEY environment variable or configure it in appsettings.json."),
-            
+            return dynamicProvider;
+        }
+
+        // OpenAI temporarily disabled; if requested, fall back to any available provider or dynamic ones
+        if (normalized == "openai")
+        {
+            var available = GetAvailableProviders().ToList();
+            var anthropicProvider = _serviceProvider.GetService<CodePunk.Core.Providers.Anthropic.AnthropicProvider>();
+            if (anthropicProvider != null)
+            {
+                return anthropicProvider;
+            }
+            // dynamic registry second pass
+            var dynamic = RuntimeProviderRegistry.GetNames().ToList();
+            if (dynamic.Count > 0 && RuntimeProviderRegistry.TryGet(dynamic[0], out var dynProv))
+            {
+                return dynProv;
+            }
+            if (available.Count > 0)
+            {
+                // Attempt to resolve first available explicitly
+                return GetProvider(available[0]);
+            }
+            throw new InvalidOperationException("No providers are configured. Run /setup or set an API key.");
+        }
+
+        return normalized switch
+        {
             "anthropic" => _serviceProvider.GetService<CodePunk.Core.Providers.Anthropic.AnthropicProvider>()
                 ?? throw new InvalidOperationException("Anthropic provider is not configured. Please set the ANTHROPIC_API_KEY environment variable or configure it in appsettings.json."),
-            
             _ => throw new NotSupportedException($"Provider '{providerName}' is not supported. Available providers: {string.Join(", ", GetAvailableProviders())}")
         };
     }
@@ -40,6 +66,8 @@ public class LLMProviderFactory : ILLMProviderFactory
     public IEnumerable<string> GetAvailableProviders()
     {
         var providers = new List<string>();
+
+        providers.AddRange(RuntimeProviderRegistry.GetNames());
 
         if (_serviceProvider.GetService<CodePunk.Core.Providers.OpenAIProvider>() != null)
         {

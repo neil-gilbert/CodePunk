@@ -16,6 +16,7 @@ internal static class ConfigPaths
     public static string PlansDirectory => Path.Combine(BaseConfigDirectory, "plans");
     public static string PlansIndexFile => Path.Combine(PlansDirectory, "index.json");
     public static string PlanBackupsDirectory => Path.Combine(PlansDirectory, "backups");
+    public static string DefaultsFile => Path.Combine(BaseConfigDirectory, "defaults.json");
 
     private static string ResolveBaseConfigDir()
     {
