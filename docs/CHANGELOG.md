@@ -3,6 +3,12 @@ CHANGELOG
 Unreleased
 - (placeholder)
 
+## 0.1.0-alpha.6 – 2025-09-21
+- Fix: Sanitizes API keys (remove CR/LF) at persistence and provider construction to prevent HTTP header newline exception during `/setup`.
+- Fix: Adjusted `LLMProviderFactory` to emit provider-specific not-configured messages matching tests.
+- Improvement: Suppressed verbose Anthropic provider info/debug logs by default; configurable via `CODEPUNK_PROVIDER_LOGLEVEL` env var.
+- Internal: Added consistent sanitation utility points (`AuthFileStore`, providers, bootstrap) to reduce future header value issues.
+
 ## v1.2.3 – 2025-09-14
 - Feature: Persist `PlanSummary` (source, goal, candidateFiles, rationale, message counts, truncated, token usage heuristic) for `plan create --from-session`.
 - Feature: JSON output now includes `tokenUsageApprox { sampleChars, approxTokens }` in `plan.create.fromSession.v1`.
