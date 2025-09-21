@@ -26,7 +26,12 @@ public class AuthFileStore : IAuthStore
             await using var fs = File.OpenRead(ConfigPaths.AuthFile);
             var data = await JsonSerializer.DeserializeAsync<Dictionary<string,string>>(fs, _jsonOptions, ct)
                        ?? new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-            return new Dictionary<string, string>(data, StringComparer.OrdinalIgnoreCase);
+            var sanitized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in data)
+            {
+                sanitized[kvp.Key] = Sanitize(kvp.Value);
+            }
+            return sanitized;
         }
         catch
         {
@@ -45,7 +50,7 @@ public class AuthFileStore : IAuthStore
         if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("Provider required", nameof(provider));
         if (string.IsNullOrWhiteSpace(apiKey)) throw new ArgumentException("API key required", nameof(apiKey));
         var map = await LoadAsync(ct).ConfigureAwait(false);
-        map[provider] = apiKey.Trim();
+        map[provider] = Sanitize(apiKey);
         await PersistAsync(map, ct).ConfigureAwait(false);
     }
 
@@ -88,5 +93,10 @@ public class AuthFileStore : IAuthStore
         {
             try { _ = System.Diagnostics.Process.Start("chmod", $"600 \"{path}\""); } catch { }
         }
+    }
+
+    private static string Sanitize(string value)
+    {
+        return (value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
     }
 }

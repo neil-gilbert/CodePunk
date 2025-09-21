@@ -28,8 +28,11 @@ public class AnthropicProvider : ILLMProvider
         // Configure HTTP client
         var baseUrl = config.BaseUrl.TrimEnd('/') + "/";
         _httpClient.BaseAddress = new Uri(baseUrl);
-        _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
-        _httpClient.DefaultRequestHeaders.Add("anthropic-version", config.Version);
+        var apiKey = (config.ApiKey ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+        var version = (config.Version ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+        _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+        if (!string.IsNullOrEmpty(version))
+            _httpClient.DefaultRequestHeaders.Add("anthropic-version", version);
         _httpClient.Timeout = config.Timeout;
 
         Models = CreateModels();

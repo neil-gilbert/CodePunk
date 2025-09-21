@@ -35,7 +35,7 @@ public class StreamingResponseRenderer
         _isStreaming = true;
         _startUtc = DateTime.UtcNow;
         _console.Write(new Rule().LeftJustified());
-        var header = _options.LiveEnabled ? "🤖 AI Assistant (live)" : "🤖 AI Assistant";
+        var header = _options.LiveEnabled ? "CodePunk Assistant (live)" : "CodePunk Assistant";
         _console.MarkupLine(ConsoleStyles.Accent(header));
         _console.WriteLine();
 
@@ -250,7 +250,7 @@ public class StreamingResponseRenderer
             ? ConsoleStyles.Dim("(streaming…)")
             : ConsoleStyles.Escape(content);
         var time = elapsed.HasValue ? ConsoleStyles.Dim($" {elapsed.Value.TotalSeconds:F1}s") : string.Empty;
-        var title = completed ? $"🤖 AI Assistant{time}" : $"🤖 AI Assistant{time}";
+        var title = completed ? $"CodePunk Assistant{time}" : $"CodePunk Assistant{time}";
         return new Panel(new Markup(body))
             .Header(ConsoleStyles.PanelTitle(title))
             .RoundedBorder();

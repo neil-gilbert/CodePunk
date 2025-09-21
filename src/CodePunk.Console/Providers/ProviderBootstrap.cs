@@ -37,6 +37,10 @@ public class ProviderBootstrap
         if (string.IsNullOrWhiteSpace(anthropicApiKey) && auth.TryGetValue("anthropic", out var storedAnthropic))
             anthropicApiKey = storedAnthropic;
 
+        static string Sanitize(string value) => (value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+        openAIApiKey = Sanitize(openAIApiKey);
+        anthropicApiKey = Sanitize(anthropicApiKey);
+
         // Remove existing registrations for providers (simplistic: rely on new service collection additions overshadow when building a new provider scope)
         // For simplicity we just append; factory will resolve latest due to GetService returning last.
 
@@ -59,7 +63,16 @@ public class ProviderBootstrap
                 Temperature = 0.7,
                 Version = version
             };
-            var providerLoggerFactory = LoggerFactory.Create(b => b.AddFilter(_ => true).AddConsole());
+            var providerLoggerFactory = LoggerFactory.Create(b =>
+            {
+                var envLevel = Environment.GetEnvironmentVariable("CODEPUNK_PROVIDER_LOGLEVEL");
+                if (!Enum.TryParse<LogLevel>(envLevel, true, out var level))
+                {
+                    level = LogLevel.Warning; // Default: suppress Info/Debug unless explicitly enabled
+                }
+                b.AddFilter("CodePunk.Core.Providers.Anthropic.AnthropicProvider", level)
+                 .AddConsole();
+            });
             var providerLogger = providerLoggerFactory.CreateLogger<AnthropicProvider>();
             var provider = new AnthropicProvider(http, config, providerLogger);
             CodePunk.Core.Services.RuntimeProviderRegistry.RegisterOrUpdate(provider);

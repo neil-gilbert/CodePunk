@@ -95,12 +95,17 @@ public class OpenAIProvider : ILLMProvider
             _httpClient.BaseAddress = new Uri("https://api.openai.com/v1/");
         }
 
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_config.ApiKey}");
+    var apiKey = (_config.ApiKey ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+    _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "CodePunk/1.0");
 
         foreach (var header in _config.ExtraHeaders)
         {
-            _httpClient.DefaultRequestHeaders.Add(header.Key, header.Value);
+            var sanitizedKey = header.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitizedKey)) continue;
+            var sanitizedValue = (header.Value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+            if (sanitizedValue.Length == 0) continue;
+            _httpClient.DefaultRequestHeaders.Add(sanitizedKey, sanitizedValue);
         }
 
         _jsonOptions = new JsonSerializerOptions

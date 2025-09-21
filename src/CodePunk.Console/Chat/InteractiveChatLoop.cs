@@ -171,7 +171,7 @@ public class InteractiveChatLoop
     {
     await Task.Yield();
         _console.Write(new Rule().LeftJustified());
-        _console.Markup("[bold green]👤 You[/]");
+        _console.Markup("[bold green] You[/]");
         
         if (_chatSession.IsActive)
         {
