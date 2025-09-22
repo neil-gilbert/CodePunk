@@ -63,9 +63,10 @@ public static class ServiceCollectionExtensions
 
 
         // Add tools
-        services.AddScoped<ITool, ReadFileTool>();
-        services.AddScoped<ITool, WriteFileTool>();
-        services.AddScoped<ITool, ShellTool>();
+    services.AddScoped<ITool, ReadFileTool>();
+    services.AddScoped<ITool, WriteFileTool>();
+    services.AddScoped<ITool, ShellTool>();
+    services.AddScoped<ITool, ApplyDiffTool>();
 
         // Add LLM providers
         services.AddLLMProviders(configuration);

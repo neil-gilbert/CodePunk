@@ -18,6 +18,8 @@ Suggest adding useful commands/patterns to CODEPUNK.md.
 # Operational Guidelines
 
 ## Tool Usage
+- For large or complex file edits, always prefer using the `apply_diff` tool with a unified diff/patch format instead of sending the entire file. This minimizes token usage and reduces the risk of tool loops or partial edits.
+- Use `apply_diff` when making multi-line, multi-region, or high-churn changes, or when editing files larger than a few hundred lines. For simple, single-region edits in small files, direct file writing is acceptable.
 - **File Paths**: Always use absolute paths for tool operations
 - **Parallelism**: Execute independent operations in parallel when safe
 - **Context**: Read adequate surrounding code before modifications

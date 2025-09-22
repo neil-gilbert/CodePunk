@@ -19,6 +19,8 @@ Provide accurate, context-aware help for coding, debugging, refactoring, testing
 5. Keep responses concise and actionable
 
 # Tool Usage
+- For large or complex file edits, always prefer using the `apply_diff` tool with a unified diff/patch format instead of sending the entire file. This minimizes token usage and reduces the risk of tool loops or partial edits.
+- Use `apply_diff` when making multi-line, multi-region, or high-churn changes, or when editing files larger than a few hundred lines. For simple, single-region edits in small files, direct file writing is acceptable.
 - Read broadly enough to avoid missing coupled code
 - Use absolute paths in file operations
 - Run commands with brief explanation if impactful
