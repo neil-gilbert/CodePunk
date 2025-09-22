@@ -10,7 +10,6 @@ public class WriteFileToolTests
     [Fact]
     public async Task WriteFile_WritesToRelativePath_AndCreatesDirectories()
     {
-        // arrange
         var tempDir = Directory.CreateTempSubdirectory();
         var prevCwd = Directory.GetCurrentDirectory();
         try
@@ -19,13 +18,8 @@ public class WriteFileToolTests
             var tool = new WriteFileTool();
             var relPath = Path.Combine("subdir", "test.txt");
             var content = "hello world";
-
             var args = JsonSerializer.SerializeToElement(new { path = relPath, content });
-
-            // act
             var result = await tool.ExecuteAsync(args);
-
-            // assert
             result.IsError.Should().BeFalse(result.ErrorMessage);
             var fullPath = Path.GetFullPath(relPath);
             File.Exists(fullPath).Should().BeTrue();
@@ -34,7 +28,7 @@ public class WriteFileToolTests
         finally
         {
             Directory.SetCurrentDirectory(prevCwd);
-            try { tempDir.Delete(true); } catch { }
+            try { tempDir.Refresh(); if (tempDir.Exists) tempDir.Delete(true); } catch { }
         }
     }
 

@@ -106,7 +106,6 @@ public class WriteFileTool : ITool
     {
         try
         {
-            // Accept both "path" and "file_path" arguments to be compatible with common tool schemas
             JsonElement pathElement;
             if (!(arguments.TryGetProperty("path", out pathElement) || arguments.TryGetProperty("file_path", out pathElement)) ||
                 !arguments.TryGetProperty("content", out var contentElement))
@@ -121,25 +120,6 @@ public class WriteFileTool : ITool
 
             var filePath = pathElement.GetString();
             var content = contentElement.GetString();
-            
-            // Normalize to absolute path relative to current working directory
-            if (!string.IsNullOrEmpty(filePath) && !Path.IsPathFullyQualified(filePath))
-            {
-                filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), filePath));
-            }
-            
-            // Conditional debug logging (only when CODEPUNK_VERBOSE=1)
-            void Debug(string msg)
-            {
-                if (Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") == "1")
-                {
-                    Console.WriteLine(msg);
-                }
-            }
-
-            Debug($"[DEBUG] WriteFileTool - Working Directory: {Directory.GetCurrentDirectory()}");
-            Debug($"[DEBUG] WriteFileTool - Requested Path: {filePath}");
-            Debug($"[DEBUG] WriteFileTool - Content Length: {content?.Length ?? 0}");
 
             if (string.IsNullOrEmpty(filePath))
             {
@@ -150,25 +130,20 @@ public class WriteFileTool : ITool
                     ErrorMessage = "File path cannot be empty"
                 };
             }
+            
+            if (!Path.IsPathFullyQualified(filePath))
+            {
+                filePath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
+            }
 
-            // Create directory if it doesn't exist
             var directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
-                Debug($"[DEBUG] WriteFileTool - Creating directory: {directory}");
                 Directory.CreateDirectory(directory);
             }
 
-            // Resolve the full path for debugging
-            var fullPath = Path.GetFullPath(filePath);
-            Debug($"[DEBUG] WriteFileTool - Full Path: {fullPath}");
-
-            await File.WriteAllTextAsync(fullPath, content ?? string.Empty, cancellationToken);
-            
-            Debug($"[DEBUG] WriteFileTool - File written successfully to: {fullPath}");
-            Debug($"[DEBUG] WriteFileTool - File exists check: {File.Exists(fullPath)}");
-            
-            return new ToolResult { Content = $"Successfully wrote to {fullPath}" };
+            await File.WriteAllTextAsync(filePath, content ?? string.Empty, cancellationToken);
+            return new ToolResult { Content = $"Successfully wrote to {filePath}" };
         }
         catch (Exception ex)
         {

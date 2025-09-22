@@ -8,19 +8,19 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{9A19103F
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Console", "src\CodePunk.Console\CodePunk.Console.csproj", "{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Core", "src\CodePunk.Core\CodePunk.Core.csproj", "{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Core", "src\CodePunk.Core\CodePunk.Core.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data", "src\CodePunk.Data\CodePunk.Data.csproj", "{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data", "src\CodePunk.Data\CodePunk.Data.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Infrastructure", "src\CodePunk.Infrastructure\CodePunk.Infrastructure.csproj", "{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Infrastructure", "src\CodePunk.Infrastructure\CodePunk.Infrastructure.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Core.Tests", "tests\CodePunk.Core.Tests\CodePunk.Core.Tests.csproj", "{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Core.Tests", "tests\CodePunk.Core.Tests\CodePunk.Core.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data.Tests", "tests\CodePunk.Data.Tests\CodePunk.Data.Tests.csproj", "{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data.Tests", "tests\CodePunk.Data.Tests\CodePunk.Data.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Console.Tests", "tests\CodePunk.Console.Tests\CodePunk.Console.Tests.csproj", "{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Console.Tests", "tests\CodePunk.Console.Tests\CodePunk.Console.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Integration.Tests", "tests\CodePunk.Integration.Tests\CodePunk.Integration.Tests.csproj", "{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Integration.Tests", "tests\CodePunk.Integration.Tests\CodePunk.Integration.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,47 +32,15 @@ Global
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G}.Release|Any CPU.Build.0 = Release|Any CPU
-		{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M}.Release|Any CPU.Build.0 = Release|Any CPU
+		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
-		{2C72B3G2-2D4E-5F6G-9G5F-6D8C0E1F3B4G} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
-		{3D83C4H3-3E5F-6G7H-0H6G-7E9D1F2G4C5H} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
-		{4E94D5I4-4F6G-7H8I-1I7H-8F0E2G3H5D6I} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
-		{5F05E6J5-5G7H-8I9J-2J8I-9G1F3H4I6E7J} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
-		{6G16F7K6-6H8I-9J0K-3K9J-0H2G4I5J7F8K} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
-		{7H27G8L7-7I9J-0K1L-4L0K-1I3H5J6K8G9L} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
-		{8I38H9M8-8J0K-1L2M-5M1L-2J4I6K7L9H0M} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
+		{00000000-0000-0000-0000-000000000000} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8CC3F7A5-B9D8-4F2E-A1C6-3E7F9B2D5A4C}
