@@ -53,7 +53,18 @@ builder.Services.AddCodePunkConsole(builder.Configuration);
 var host = builder.Build();
 await host.Services.EnsureDatabaseCreatedAsync();
 
-// Dynamic provider bootstrap (register providers from env/auth before commands run)
+try
+{
+    var defaultsStore = host.Services.GetService<IDefaultsStore>();
+    var chatSession = host.Services.GetRequiredService<InteractiveChatSession>();
+    if (defaultsStore != null)
+    {
+        var defaults = await defaultsStore.LoadAsync();
+        chatSession.UpdateDefaults(defaults.Provider, defaults.Model);
+    }
+}
+catch { }
+
 try
 {
     var bootstrap = host.Services.GetService<CodePunk.Console.Providers.ProviderBootstrap>();
@@ -64,7 +75,6 @@ try
 }
 catch (Exception ex)
 {
-    // Non-fatal; proceed without providers if bootstrap fails
     Log.Logger.Warning(ex, "Provider bootstrap failed");
 }
 
@@ -73,10 +83,10 @@ var commandProcessor = host.Services.GetRequiredService<CommandProcessor>();
 var root = RootCommandFactory.Create(host.Services);
 
 var consoleService = host.Services.GetRequiredService<IAnsiConsole>();
-// Apply persisted defaults if available
+
 try
 {
-    var defaultsStore = host.Services.GetService<CodePunk.Console.Stores.IDefaultsStore>();
+    var defaultsStore = host.Services.GetService<IDefaultsStore>();
     if (defaultsStore != null)
     {
         var defaults = await defaultsStore.LoadAsync();
@@ -88,6 +98,7 @@ try
     }
 }
 catch { }
+
 if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") != "1")
 {
     consoleService.Write(ConsoleStyles.HeaderRule("Interactive Session"));
@@ -96,7 +107,6 @@ if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") !
     consoleService.WriteLine();
 }
 
-// Custom root help rendering
 if (args.Length > 0 && args.All(a => a == "--help" || a == "-h"))
 {
     return HelpRenderer.ShowRootHelp(consoleService, root);
