@@ -21,6 +21,11 @@ Provide accurate, context-aware help for coding, debugging, refactoring, testing
 # Tool Usage
 - For large or complex file edits, always prefer using the `apply_diff` tool with a unified diff/patch format instead of sending the entire file. This minimizes token usage and reduces the risk of tool loops or partial edits.
 - Use `apply_diff` when making multi-line, multi-region, or high-churn changes, or when editing files larger than a few hundred lines. For simple, single-region edits in small files, direct file writing is acceptable.
+- Enhanced parameters:
+	- `dryRun`: true to validate diff without writing (large/high-risk patches). Apply for real only after a clean validation.
+	- `contextScanRadius` (default 12): Best-effort fuzzy relocation window; increase slightly only if dry-run shows relocatable rejects.
+- Workflow: generate diff -> dry-run (`strategy: best-effort`) -> adjust/regenerate or tweak radius if needed -> apply without `dryRun`.
+- Prefer regenerating a precise diff over inflating `contextScanRadius` repeatedly.
 - Read broadly enough to avoid missing coupled code
 - Use absolute paths in file operations
 - Run commands with brief explanation if impactful

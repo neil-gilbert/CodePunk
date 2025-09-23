@@ -21,7 +21,9 @@ public class ApplyDiffTool : ITool
         ""maxRejects"": { ""type"": ""integer"", ""default"": 0 },
         ""strategy"": { ""type"": ""string"", ""enum"": [""strict"", ""best-effort""], ""default"": ""strict"" },
         ""createIfMissing"": { ""type"": ""boolean"", ""default"": false },
-        ""expectedNewHash"": { ""type"": ""string"", ""description"": ""Expected SHA256 hash after patch (optional)."" }
+        ""expectedNewHash"": { ""type"": ""string"", ""description"": ""Expected SHA256 hash after patch (optional)."" },
+        ""dryRun"": { ""type"": ""boolean"", ""default"": false, ""description"": ""If true, validate and compute result but do not write file."" },
+        ""contextScanRadius"": { ""type"": ""integer"", ""default"": 12, ""description"": ""Lines above/below original hunk start to scan when context mismatch occurs (best-effort only)."" }
       },
       ""required"": [""filePath"", ""patch""],
       ""additionalProperties"": false
@@ -37,6 +39,8 @@ public class ApplyDiffTool : ITool
         var patchFormat = arguments.TryGetProperty("patchFormat", out var pf) ? pf.GetString() : "unified";
         var originalHash = arguments.TryGetProperty("originalHash", out var oh) ? oh.GetString() : null;
         var expectedNewHash = arguments.TryGetProperty("expectedNewHash", out var enh) ? enh.GetString() : null;
+  var dryRun = arguments.TryGetProperty("dryRun", out var dr) && dr.GetBoolean();
+  var contextScanRadius = arguments.TryGetProperty("contextScanRadius", out var csr) ? csr.GetInt32() : GetEnvInt("CODEPUNK_DIFF_FUZZ_RADIUS", 12);
 
         var validation = ValidateFilePath(filePath);
         if (validation != null) return validation;
@@ -69,24 +73,28 @@ public class ApplyDiffTool : ITool
         if (patch.Length > maxPatch)
             return Error($"Patch too large (>" + maxPatch + " chars).");
 
-    var patchResult = ApplyPatch(originalLF, patch, patchFormat, maxRejects, strategy);
+  var patchResult = ApplyPatch(originalLF, patch, patchFormat ?? "unified", maxRejects, strategy ?? "strict", dryRun, contextScanRadius);
     if (patchResult.IsError)
       return Error(patchResult.ErrorMessage ?? "Patch failed");
-
-        var tmp = fullPath + ".tmp";
-        await File.WriteAllTextAsync(tmp, patchResult.NewContent, cancellationToken);
-        try { File.Replace(tmp, fullPath, null); }
-        catch { File.Copy(tmp, fullPath, true); File.Delete(tmp); }
+    if (!dryRun)
+    {
+      var tmp = fullPath + ".tmp";
+      await File.WriteAllTextAsync(tmp, patchResult.NewContent, cancellationToken);
+      try { File.Replace(tmp, fullPath, null); }
+      catch { File.Copy(tmp, fullPath, true); File.Delete(tmp); }
+    }
 
         var newHash = Sha256Hex(patchResult.NewContent);
         if (!string.IsNullOrEmpty(expectedNewHash) && !newHash.Equals(expectedNewHash, StringComparison.OrdinalIgnoreCase))
         {
             if (strategy == "strict") return Error("New hash mismatch after patch.");
         }
-        var tokensSaved = (originalLF.Length + patchResult.NewContent.Length - patch.Length) / 4;
+    var tokensSavedRaw = (originalLF.Length + patchResult.NewContent.Length - patch.Length) / 4;
+    if (tokensSavedRaw < 0) tokensSavedRaw = 0;
+    var details = patchResult.Details?.Count > 0 ? string.Join(" | ", patchResult.Details) : string.Empty;
         return new ToolResult
         {
-            Content = $"Patch applied. {patchResult.Message} Rejected hunks: {patchResult.RejectedHunks}. Tokens saved (est): {tokensSaved}.",
+      Content = $"Patch {(dryRun ? "validated" : "applied")}. {patchResult.Message} Rejected hunks: {patchResult.RejectedHunks}. Tokens saved (est): {tokensSavedRaw}." + (string.IsNullOrEmpty(details) ? string.Empty : " Details: " + details),
             IsError = false
         };
     }
@@ -112,18 +120,18 @@ public class ApplyDiffTool : ITool
 
     private static string NormalizeLineEndings(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
-    private static PatchResult ApplyPatch(string original, string patch, string patchFormat, int maxRejects, string strategy)
+  private static PatchResult ApplyPatch(string original, string patch, string patchFormat, int maxRejects, string strategy, bool dryRun, int contextScanRadius)
     {
         if (patchFormat != "unified")
             return PatchResult.Error("Only unified diff format is supported in this version.");
         try
         {
             var diff = UnifiedDiff.Parse(patch);
-            var applier = new UnifiedDiffApplier();
-            var applyResult = applier.Apply(original, diff, maxRejects, strategy == "strict");
+      var applier = new UnifiedDiffApplier();
+      var applyResult = applier.Apply(original, diff, maxRejects, strategy == "strict", dryRun, contextScanRadius);
             if (!applyResult.Applied)
                 return PatchResult.Error(applyResult.Message);
-            return PatchResult.Success(applyResult.NewText, applyResult.RejectedHunks, applyResult.Message);
+      return PatchResult.Success(applyResult.NewText, applyResult.RejectedHunks, applyResult.Message, applyResult.HunkMessages);
         }
         catch (Exception ex)
         {
@@ -141,16 +149,17 @@ public class ApplyDiffTool : ITool
         return BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
     }
 
-    private class PatchResult
-    {
-        public bool IsError { get; private set; }
-        public string? ErrorMessage { get; private set; }
-        public string NewContent { get; private set; } = string.Empty;
-        public int RejectedHunks { get; private set; }
-        public string Message { get; private set; } = string.Empty;
-        public static PatchResult Success(string newContent, int rejected, string message) => new PatchResult { NewContent = newContent, RejectedHunks = rejected, Message = message };
-        public static PatchResult Error(string msg) => new PatchResult { IsError = true, ErrorMessage = msg };
-    }
+  private class PatchResult
+  {
+    public bool IsError { get; private set; }
+    public string? ErrorMessage { get; private set; }
+    public string NewContent { get; private set; } = string.Empty;
+    public int RejectedHunks { get; private set; }
+    public string Message { get; private set; } = string.Empty;
+    public List<string>? Details { get; private set; }
+    public static PatchResult Success(string newContent, int rejected, string message, List<string>? details) => new PatchResult { NewContent = newContent, RejectedHunks = rejected, Message = message, Details = details };
+    public static PatchResult Error(string msg) => new PatchResult { IsError = true, ErrorMessage = msg };
+  }
 
 
   private class UnifiedDiff
@@ -198,64 +207,96 @@ public class ApplyDiffTool : ITool
 
   private class UnifiedDiffApplier
   {
-    public (bool Applied, string NewText, int RejectedHunks, string Message) Apply(string original, UnifiedDiff diff, int maxRejects, bool strict)
+    public class ApplyResult
     {
-      var origLines = original.Split('\n').ToList();
+      public bool Applied { get; set; }
+      public string NewText { get; set; } = string.Empty;
+      public int RejectedHunks { get; set; }
+      public string Message { get; set; } = string.Empty;
+      public List<string> HunkMessages { get; set; } = new();
+    }
+    public ApplyResult Apply(string original, UnifiedDiff diff, int maxRejects, bool strict, bool dryRun, int contextScanRadius)
+    {
+      var origLinesWorking = original.Split('\n').ToList();
+      var origLinesForDryRun = original.Split('\n').ToList();
       int rejected = 0;
+      var hunkReports = new List<string>();
+      int hunkIndex = 0;
       foreach (var h in diff.Hunks)
       {
-        int idx = h.StartOld - 1;
-        int origIdx = idx;
-        bool contextOk = true;
-        var toRemove = new List<int>();
-        var toAdd = new List<(int, string)>();
-        foreach (var l in h.Lines)
+        hunkIndex++;
+        bool applied = TryApplyHunk(origLinesWorking, h, strict, ref rejected, maxRejects, contextScanRadius, out var report, out var fatal, dryRun);
+        hunkReports.Add($"hunk {hunkIndex}:{report}");
+        if (fatal)
         {
-          if (l.StartsWith("-"))
-          {
-            if (origIdx >= origLines.Count || origLines[origIdx] != l.Substring(1))
-            {
-              contextOk = false; break;
-            }
-            toRemove.Add(origIdx);
-            origIdx++;
-          }
-          else if (l.StartsWith("+"))
-          {
-            toAdd.Add((origIdx, l.Substring(1)));
-          }
-          else if (l.StartsWith(" "))
-          {
-            if (origIdx >= origLines.Count || origLines[origIdx] != l.Substring(1))
-            {
-              contextOk = false; break;
-            }
-            origIdx++;
-          }
+          return new ApplyResult { Applied = false, NewText = original, RejectedHunks = rejected, Message = report, HunkMessages = hunkReports };
         }
-        if (!contextOk)
+      }
+      var finalLines = dryRun ? origLinesForDryRun : origLinesWorking;
+      return new ApplyResult { Applied = true, NewText = string.Join("\n", finalLines), RejectedHunks = rejected, Message = "Completed", HunkMessages = hunkReports };
+    }
+    private bool TryApplyHunk(List<string> lines, UnifiedDiff.Hunk h, bool strict, ref int rejected, int maxRejects, int radius, out string report, out bool fatal, bool dryRun)
+    {
+      fatal = false;
+      if (AttemptAt(lines, h, h.StartOld - 1, dryRun, out report)) return true;
+      if (strict)
+      {
+        rejected++;
+        if (strict || rejected > maxRejects) { fatal = true; report = "context mismatch strict"; }
+        return false;
+      }
+      int startIdx = Math.Max(0, h.StartOld - 1 - radius);
+      int endIdx = Math.Min(lines.Count - 1, h.StartOld - 1 + radius);
+      for (int candidate = startIdx; candidate <= endIdx; candidate++)
+      {
+        if (candidate == h.StartOld - 1) continue;
+        if (AttemptAt(lines, h, candidate, dryRun, out _))
         {
-          rejected++;
-          if (strict || rejected > maxRejects)
-            return (false, original, rejected, "Context mismatch");
-          continue;
+          report = $"relocated from {h.StartOld} to {candidate + 1}";
+          return true;
         }
-        // Remove lines first
-        foreach (var r in toRemove.OrderByDescending(x => x))
-          if (r < origLines.Count) origLines.RemoveAt(r);
-        // Insert lines, adjusting for prior removals
-        int insertOffset = 0;
+      }
+      rejected++;
+      report = "rejected (no match in radius)";
+      if (rejected > maxRejects) { fatal = true; }
+      return false;
+    }
+    private bool AttemptAt(List<string> lines, UnifiedDiff.Hunk h, int idx, bool dryRun, out string report)
+    {
+      int origIdx = idx;
+      if (origIdx < 0) { report = "invalid start"; return false; }
+      var toRemove = new List<int>();
+      var toAdd = new List<(int, string)>();
+      foreach (var l in h.Lines)
+      {
+        if (l.StartsWith("-"))
+        {
+          if (origIdx >= lines.Count || lines[origIdx] != l.Substring(1)) { report = "delete mismatch"; return false; }
+          toRemove.Add(origIdx);
+          origIdx++;
+        }
+        else if (l.StartsWith("+"))
+        {
+          toAdd.Add((origIdx, l.Substring(1)));
+        }
+        else if (l.StartsWith(" "))
+        {
+          if (origIdx >= lines.Count || lines[origIdx] != l.Substring(1)) { report = "context line mismatch"; return false; }
+          origIdx++;
+        }
+      }
+      if (!dryRun)
+      {
+        foreach (var r in toRemove.OrderByDescending(x => x)) if (r < lines.Count) lines.RemoveAt(r);
         foreach (var (pos, val) in toAdd)
         {
           int insertAt = pos;
-          foreach (var removed in toRemove)
-            if (removed < pos) insertAt--;
-          if (insertAt <= origLines.Count) origLines.Insert(insertAt, val);
-          else origLines.Add(val);
-          insertOffset++;
+          foreach (var removed in toRemove) if (removed < pos) insertAt--;
+          if (insertAt <= lines.Count) lines.Insert(insertAt, val); else lines.Add(val);
         }
       }
-      return (true, string.Join("\n", origLines), rejected, "All hunks applied.");
+      report = idx == h.StartOld - 1 ? "applied" : "relocated";
+      return true;
     }
   }
 }

@@ -20,6 +20,11 @@ Suggest adding useful commands/patterns to CODEPUNK.md.
 ## Tool Usage
 - For large or complex file edits, always prefer using the `apply_diff` tool with a unified diff/patch format instead of sending the entire file. This minimizes token usage and reduces the risk of tool loops or partial edits.
 - Use `apply_diff` when making multi-line, multi-region, or high-churn changes, or when editing files larger than a few hundred lines. For simple, single-region edits in small files, direct file writing is acceptable.
+- Extended parameters:
+	- `dryRun`: validate without writing (large/refactor patches) then re-issue to apply.
+	- `contextScanRadius` (default 12): Fuzzy relocate hunks in best-effort mode only; small increases only when dry-run rejects with context mismatch.
+- Process: diff -> dry-run -> adjust (regenerate or minor radius increase) -> apply.
+- Keep radius conservative; prefer better diff generation over large scans.
 - **File Paths**: Always use absolute paths for tool operations
 - **Parallelism**: Execute independent operations in parallel when safe
 - **Context**: Read adequate surrounding code before modifications
