@@ -58,6 +58,8 @@ public class InteractiveChatSession
         {
             if (!string.IsNullOrWhiteSpace(provider)) opts.DefaultProvider = provider.Trim();
             if (!string.IsNullOrWhiteSpace(model)) opts.DefaultModel = model.Trim();
+            // Propagate to LLM service so request construction respects user selection
+            try { _llmService.SetSessionDefaults(opts.DefaultProvider, opts.DefaultModel); } catch { }
             _logger.LogDebug("Chat defaults updated to provider={Provider} model={Model}", opts.DefaultProvider, opts.DefaultModel);
         }
     }

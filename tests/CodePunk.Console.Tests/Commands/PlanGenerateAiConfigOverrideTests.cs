@@ -35,6 +35,7 @@ public class PlanGenerateAiConfigOverrideTests : ConsoleTestBase
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
         public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, new []{ new TextPart("two") }));
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _p.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() }, cancellationToken);
+            public void SetSessionDefaults(string? providerName, string? modelId) { }
     }
 
     [Fact]

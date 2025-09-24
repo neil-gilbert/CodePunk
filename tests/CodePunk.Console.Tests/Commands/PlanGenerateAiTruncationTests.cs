@@ -30,6 +30,7 @@ public class PlanGenerateAiTruncationTests : ConsoleTestBase
         public ILLMProvider? GetProvider(string name) => name == _p.Name ? _p : null;
         public ILLMProvider GetDefaultProvider() => _p;
         public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => _p.SendAsync(request, cancellationToken);
+        public void SetSessionDefaults(string? providerName, string? modelId) { }
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
         public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.SendAsync(request, cancellationToken);
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);

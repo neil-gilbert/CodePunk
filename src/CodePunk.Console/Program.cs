@@ -55,18 +55,6 @@ await host.Services.EnsureDatabaseCreatedAsync();
 
 try
 {
-    var defaultsStore = host.Services.GetService<IDefaultsStore>();
-    var chatSession = host.Services.GetRequiredService<InteractiveChatSession>();
-    if (defaultsStore != null)
-    {
-        var defaults = await defaultsStore.LoadAsync();
-        chatSession.UpdateDefaults(defaults.Provider, defaults.Model);
-    }
-}
-catch { }
-
-try
-{
     var bootstrap = host.Services.GetService<CodePunk.Console.Providers.ProviderBootstrap>();
     if (bootstrap != null)
     {
@@ -94,10 +82,14 @@ try
         {
             var session = host.Services.GetRequiredService<InteractiveChatSession>();
             session.UpdateDefaults(defaults.Provider, defaults.Model);
+            Log.Logger.Debug("Persisted defaults applied: provider={Provider} model={Model}", defaults.Provider, defaults.Model);
         }
     }
 }
-catch { }
+catch (Exception ex)
+{
+    Log.Logger.Warning(ex, "Failed to apply persisted defaults");
+}
 
 if (args.Length == 0 && Environment.GetEnvironmentVariable("CODEPUNK_VERBOSE") != "1")
 {

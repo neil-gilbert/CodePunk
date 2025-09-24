@@ -54,6 +54,7 @@ public class ModelsCommandTests
         public IReadOnlyList<ILLMProvider> GetProviders() => Array.Empty<ILLMProvider>();
         public ILLMProvider? GetProvider(string name) => null;
         public ILLMProvider GetDefaultProvider() => new Provider();
+        public void SetSessionDefaults(string? providerName, string? modelId) { }
     public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => AsyncEmpty();
@@ -77,6 +78,7 @@ public class ModelsCommandTests
         public IReadOnlyList<ILLMProvider> GetProviders() => _providers;
         public ILLMProvider? GetProvider(string name) => _providers.FirstOrDefault(p => p.Name==name);
         public ILLMProvider GetDefaultProvider() => _providers[0];
+        public void SetSessionDefaults(string? providerName, string? modelId) { }
     public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty();
