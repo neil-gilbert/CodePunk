@@ -1,3 +1,4 @@
+using System.Text;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using CodePunk.Core.Chat;
@@ -43,7 +44,9 @@ public class InteractiveChatLoop
         if (string.IsNullOrWhiteSpace(message)) return string.Empty;
         await EnsureActiveSessionAsync(cancellationToken);
         _renderer.StartStreaming();
-        var sb = new System.Text.StringBuilder();
+
+        var sb = new StringBuilder();
+
         await foreach (var chunk in _chatSession.SendMessageStreamAsync(message, cancellationToken))
         {
             _renderer.ProcessChunk(chunk);
@@ -106,20 +109,34 @@ public class InteractiveChatLoop
     private void ShowWelcome()
     {
         _console.Clear();
-        _console.Write(
-            new FigletText("CodePunk")
-                .Centered()
-                .Color(Color.Cyan1));
+
+        var colors = new[] { "#00FFFF", "#33CCFF", "#6699FF", "#9933FF", "#FF00FF", "#FF66CC" };
+        var header = HeaderLogo.CyberSmallCaps;
+
+        var sb = new StringBuilder();
+        for (var i = 0; i < header.Length; i++)
+        {
+            var color = colors[i % colors.Length];
+            sb.AppendLine($"[{color}]{header[i]}[/]");
+        }
+
+        var headerPanel = new Panel(new Markup(sb.ToString()))
+            .Border(BoxBorder.Double)
+            .BorderStyle(new Style(Color.Aqua))
+            .Header("[bold #FF66FF]Welcome to CodePunk[/]", Justify.Center)
+            .Padding(1, 1);
+
+        _console.Write(new Align(headerPanel, HorizontalAlignment.Center, VerticalAlignment.Top));
 
         _console.MarkupLine("[dim]AI-powered coding assistant - Interactive Chat[/]");
         _console.WriteLine();
         
         _console.Write(new Rule("[cyan]Welcome to CodePunk[/]"));
-        _console.MarkupLine("💬 Start chatting with AI or type [cyan]/help[/] for commands");
-        _console.MarkupLine("🛠  First time? Run [cyan]/setup[/] to select a provider & store your API key");
-        _console.MarkupLine("🔁 Added a key? Use [cyan]/reload[/] to refresh providers");
-        _console.MarkupLine("🚀 Type [cyan]/new[/] to start a new session");
-        _console.MarkupLine("❌ Press [cyan]Ctrl+C[/] or type [cyan]/quit[/] to exit");
+        _console.MarkupLine("Start chatting with AI or type [cyan]/help[/] for commands");
+        _console.MarkupLine("First time? Run [cyan]/setup[/] to select a provider & store your API key");
+        _console.MarkupLine("Added a key? Use [cyan]/reload[/] to refresh providers");
+        _console.MarkupLine("Type [cyan]/new[/] to start a new session");
+        _console.MarkupLine("Press [cyan]Ctrl+C[/] or type [cyan]/quit[/] to exit");
         _console.WriteLine();
     }
 
@@ -129,7 +146,7 @@ public class InteractiveChatLoop
     private void ShowGoodbye()
     {
         _console.WriteLine();
-        _console.MarkupLine("[dim]Thanks for using CodePunk! 👋[/]");
+        _console.MarkupLine("[dim]Thanks for using CodePunk![/]");
     }
 
     /// <summary>
