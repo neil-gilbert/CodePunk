@@ -6,9 +6,6 @@ using System.Text.RegularExpressions;
 
 namespace CodePunk.Core.Services;
 
-/// <summary>
-/// Console-based approval service for file edit operations
-/// </summary>
 public class ConsoleApprovalService : IApprovalService
 {
     private readonly ILogger<ConsoleApprovalService> _logger;
@@ -19,9 +16,6 @@ public class ConsoleApprovalService : IApprovalService
         _logger = logger;
     }
 
-    /// <summary>
-    /// Request user approval via console interface with diff preview
-    /// </summary>
     public async Task<ApprovalResult> RequestApprovalAsync(
         FileEditRequest request,
         string diff,
@@ -30,7 +24,6 @@ public class ConsoleApprovalService : IApprovalService
     {
         try
         {
-            // Check if auto-approval is enabled for this session
             if (_autoApproveSession)
             {
                 _logger.LogInformation("Auto-approving file edit (session auto-approval enabled): {FilePath}", request.FilePath);
@@ -38,36 +31,18 @@ public class ConsoleApprovalService : IApprovalService
                 return new ApprovalResult(true);
             }
 
-            // Display file edit summary
             Console.WriteLine($"\nFile Edit Request: {request.FilePath}");
             Console.WriteLine($"Changes: +{stats.LinesAdded}/-{stats.LinesRemoved} lines, +{stats.CharsAdded}/-{stats.CharsRemoved} chars");
 
-            // Show diff with size limits for readability
             if (!string.IsNullOrEmpty(diff))
             {
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[yellow]Diff Preview:[/]");
-                AnsiConsole.WriteLine(new string('─', 80));
+                AnsiConsole.MarkupLine("[yellow]Changes Preview:[/]");
 
-                if (diff.Length > 2000)
-                {
-                    // Show truncated diff for large changes
-                    var lines = diff.Split('\n');
-                    var previewLines = lines.Take(50).ToArray();
-                    var truncatedDiff = string.Join("\n", previewLines);
-
-                    AnsiConsole.Write(FormatDiffWithColors(truncatedDiff));
-                    AnsiConsole.MarkupLine($"\n[dim]... ({lines.Length - 50} more lines)[/]");
-                }
-                else
-                {
-                    AnsiConsole.Write(FormatDiffWithColors(diff));
-                }
-
-                AnsiConsole.WriteLine(new string('─', 80));
+                var diffSections = ParseDiffIntoSections(diff);
+                DisplaySideBySideDiff(diffSections, request, stats);
             }
 
-            // Prompt for approval using Spectre selection
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("\n[yellow]What would you like to do with these changes?[/]")
@@ -92,64 +67,213 @@ public class ConsoleApprovalService : IApprovalService
         }
     }
 
-    private static Markup FormatDiffWithColors(string diff)
+    private record DiffSection(int OldStartLine, int NewStartLine, List<DiffLine> Lines);
+    private record DiffLine(DiffLineType Type, string Content, int OldLineNum, int NewLineNum);
+    private enum DiffLineType { Context, Addition, Deletion }
+
+    private static List<DiffSection> ParseDiffIntoSections(string diff)
     {
         if (string.IsNullOrEmpty(diff))
-            return new Markup(string.Empty);
+            return new List<DiffSection>();
 
         var lines = diff.Split('\n');
-        var formattedLines = new List<string>();
+        var sections = new List<DiffSection>();
+        var hunkHeaderRegex = new Regex(@"^@@ -(\d+),\d+ \+(\d+),\d+ @@");
 
+        DiffSection? currentSection = null;
         int oldLineNum = 0;
         int newLineNum = 0;
-        var hunkHeaderRegex = new Regex(@"^@@ -(\d+),\d+ \+(\d+),\d+ @@");
 
         foreach (var line in lines)
         {
             if (line.StartsWith("@@"))
             {
-                // Parse hunk header to get starting line numbers
+                if (currentSection != null)
+                    sections.Add(currentSection);
+
                 var match = hunkHeaderRegex.Match(line);
                 if (match.Success)
                 {
                     oldLineNum = int.Parse(match.Groups[1].Value);
                     newLineNum = int.Parse(match.Groups[2].Value);
+                    currentSection = new DiffSection(oldLineNum, newLineNum, new List<DiffLine>());
                 }
-                // Skip displaying hunk headers - they're just technical metadata
-                continue;
             }
-            else if (line.StartsWith("+"))
+            else if (currentSection != null && !line.StartsWith("---") && !line.StartsWith("+++"))
             {
-                // Addition: show new line number
-                formattedLines.Add($"[white on green4]{Markup.Escape($"{newLineNum,4} {line}")}[/]");
-                newLineNum++;
-            }
-            else if (line.StartsWith("-"))
-            {
-                // Deletion: show old line number
-                formattedLines.Add($"[white on red3_1]{Markup.Escape($"{oldLineNum,4} {line}")}[/]");
-                oldLineNum++;
-            }
-            else if (line.StartsWith(" "))
-            {
-                // Context: show both line numbers (using old line number) with no background
-                formattedLines.Add(Markup.Escape($"{oldLineNum,4} {line}"));
-                oldLineNum++;
-                newLineNum++;
-            }
-            else if (line.StartsWith("---") || line.StartsWith("+++"))
-            {
-                // File headers
-                formattedLines.Add($"[black on yellow3]{Markup.Escape(line)}[/]");
-            }
-            else
-            {
-                // Other lines (shouldn't normally happen in unified diff)
-                formattedLines.Add(Markup.Escape(line));
+                DiffLineType type;
+                string content = line.Length > 0 ? line[1..] : "";
+
+                if (line.StartsWith("+"))
+                {
+                    type = DiffLineType.Addition;
+                    currentSection.Lines.Add(new DiffLine(type, content, -1, newLineNum));
+                    newLineNum++;
+                }
+                else if (line.StartsWith("-"))
+                {
+                    type = DiffLineType.Deletion;
+                    currentSection.Lines.Add(new DiffLine(type, content, oldLineNum, -1));
+                    oldLineNum++;
+                }
+                else if (line.StartsWith(" "))
+                {
+                    type = DiffLineType.Context;
+                    currentSection.Lines.Add(new DiffLine(type, content, oldLineNum, newLineNum));
+                    oldLineNum++;
+                    newLineNum++;
+                }
             }
         }
 
-        return new Markup(string.Join("\n", formattedLines));
+        if (currentSection != null)
+            sections.Add(currentSection);
+
+        return sections;
+    }
+
+    private static void DisplaySideBySideDiff(List<DiffSection> sections, FileEditRequest request, DiffStats stats)
+    {
+        const int maxLinesTotal = 25;
+
+        var mergedSections = MergeAdjacentSections(sections);
+        var section = mergedSections.FirstOrDefault();
+
+        if (section == null) return;
+
+        var filteredLines = GetLinesWithContext(section.Lines, 2);
+
+        if (!filteredLines.Any()) return;
+
+        if (filteredLines.Count > maxLinesTotal)
+        {
+            var changeCount = filteredLines.Count(l => l.Type != DiffLineType.Context);
+            AnsiConsole.MarkupLine($"[yellow]Showing first {maxLinesTotal} lines ({changeCount} total changes)[/]");
+            filteredLines = filteredLines.Take(maxLinesTotal).ToList();
+        }
+
+        AnsiConsole.MarkupLine($"[dim]Updated {request.FilePath} with {stats.LinesAdded} additions and {stats.LinesRemoved} removals[/]");
+
+        var isFileCreation = filteredLines.All(l => l.Type == DiffLineType.Addition);
+
+        if (isFileCreation)
+        {
+            var additionLines = filteredLines.Select(line =>
+                $"[green]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}");
+
+            var creationPanel = new Panel(new Markup(string.Join("\n", additionLines)))
+                .Header("[green]New File Content[/]", Justify.Left)
+                .Border(BoxBorder.Rounded)
+                .BorderStyle(new Style(Color.Green4))
+                .Expand();
+
+            var paddedCreationPanel = new Padder(creationPanel, new Padding(0, 0, 0, 7));
+            AnsiConsole.Write(paddedCreationPanel);
+            AnsiConsole.WriteLine();
+            return;
+        }
+
+        var unifiedLines = new List<string>();
+
+        foreach (var line in filteredLines)
+        {
+            switch (line.Type)
+            {
+                case DiffLineType.Context:
+                    var lineNum = line.OldLineNum != -1 ? line.OldLineNum : line.NewLineNum;
+                    unifiedLines.Add($"[dim]{lineNum,3}[/]   {Markup.Escape(line.Content)}");
+                    break;
+                case DiffLineType.Deletion:
+                    unifiedLines.Add($"[red]{line.OldLineNum,3}[/] [white on red3_1]- {Markup.Escape(line.Content)}[/]");
+                    break;
+                case DiffLineType.Addition:
+                    unifiedLines.Add($"[green]{line.NewLineNum,3}[/] [white on green4]+ {Markup.Escape(line.Content)}[/]");
+                    break;
+            }
+        }
+
+        var diffPanel = new Panel(new Markup(string.Join("\n", unifiedLines)))
+            .Header("[yellow]Changes[/]", Justify.Left)
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(new Style(Color.Yellow))
+            .Expand();
+
+        var paddedDiffPanel = new Padder(diffPanel, new Padding(0, 0, 0, 7));
+        AnsiConsole.Write(paddedDiffPanel);
+        AnsiConsole.WriteLine();
+    }
+
+    private static List<DiffSection> MergeAdjacentSections(List<DiffSection> sections)
+    {
+        if (sections.Count <= 1) return sections;
+
+        var allLines = new List<DiffLine>();
+        var seenLines = new HashSet<(int oldLine, int newLine, string content)>();
+
+        int minOldStart = sections.Min(s => s.OldStartLine);
+        int minNewStart = sections.Min(s => s.NewStartLine);
+
+        foreach (var section in sections.OrderBy(s => s.OldStartLine))
+        {
+            foreach (var line in section.Lines)
+            {
+                var key = (line.OldLineNum, line.NewLineNum, line.Content);
+                if (!seenLines.Contains(key))
+                {
+                    seenLines.Add(key);
+                    allLines.Add(line);
+                }
+            }
+        }
+
+        allLines = allLines.OrderBy(l =>
+        {
+            if (l.Type == DiffLineType.Context || l.Type == DiffLineType.Deletion)
+                return l.OldLineNum != -1 ? l.OldLineNum : int.MaxValue;
+            else
+                return l.NewLineNum != -1 ? l.NewLineNum : int.MaxValue;
+        }).ToList();
+
+        return new List<DiffSection>
+        {
+            new DiffSection(minOldStart, minNewStart, allLines)
+        };
+    }
+
+    private static List<DiffLine> GetLinesWithContext(List<DiffLine> lines, int contextLines)
+    {
+        var result = new List<DiffLine>();
+        var changedLineIndices = new HashSet<int>();
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Type != DiffLineType.Context)
+                changedLineIndices.Add(i);
+        }
+
+        var linesToInclude = new HashSet<int>();
+        foreach (var changeIndex in changedLineIndices)
+        {
+            for (int i = Math.Max(0, changeIndex - contextLines);
+                 i <= Math.Min(lines.Count - 1, changeIndex + contextLines);
+                 i++)
+            {
+                linesToInclude.Add(i);
+            }
+        }
+
+        foreach (var index in linesToInclude.OrderBy(x => x))
+        {
+            result.Add(lines[index]);
+        }
+
+        return result;
+    }
+
+    private static string TruncateLine(string line, int maxWidth)
+    {
+        if (line.Length <= maxWidth) return line;
+        return line[..(maxWidth - 3)] + "...";
     }
 
     private ApprovalResult HandleApproval(string filePath, bool approved)
