@@ -63,6 +63,7 @@ public record ToolResult
     public required string Content { get; init; }
     public bool IsError { get; init; } = false;
     public string? ErrorMessage { get; init; }
+    public bool UserCancelled { get; init; } = false;
 }
 
 /// <summary>
