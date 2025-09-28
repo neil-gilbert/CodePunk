@@ -61,12 +61,16 @@ public static class ServiceCollectionExtensions
         // Add chat services
         services.AddScoped<InteractiveChatSession>();
 
+        // Add file editing services (Gemini CLI pattern)
+        services.AddScoped<IDiffService, DiffService>();
+        services.AddScoped<IApprovalService, ConsoleApprovalService>();
+        services.AddScoped<IFileEditService, FileEditService>();
 
-        // Add tools
-    services.AddScoped<ITool, ReadFileTool>();
-    services.AddScoped<ITool, WriteFileTool>();
-    services.AddScoped<ITool, ShellTool>();
-    services.AddScoped<ITool, ApplyDiffTool>();
+        // Add tools (Gemini CLI pattern)
+        services.AddScoped<ITool, ReadFileTool>();
+        services.AddScoped<ITool, WriteFileTool>();
+        services.AddScoped<ITool, ReplaceInFileTool>();
+        services.AddScoped<ITool, ShellTool>();
 
         // Add LLM providers
         services.AddLLMProviders(configuration);

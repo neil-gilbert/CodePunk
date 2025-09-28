@@ -1,5 +1,7 @@
 using System.Text.Json;
 using CodePunk.Core.Services;
+using CodePunk.Core.Abstractions;
+using CodePunk.Core.Models.FileEdit;
 
 namespace CodePunk.Core.Tools;
 
@@ -76,19 +78,26 @@ public class ReadFileTool : ITool
 }
 
 /// <summary>
-/// Tool for writing file contents
+/// Tool for writing complete file contents with diff generation and approval following Gemini CLI pattern
 /// </summary>
 public class WriteFileTool : ITool
 {
+    private readonly IFileEditService _fileEditService;
+
+    public WriteFileTool(IFileEditService fileEditService)
+    {
+        _fileEditService = fileEditService;
+    }
+
     public string Name => "write_file";
-    public string Description => "Write content to a file on the filesystem";
-    
+    public string Description => "Write complete content to a file with diff generation and optional approval";
+
     public JsonElement Parameters => JsonSerializer.SerializeToElement(new
     {
         type = "object",
         properties = new
         {
-            path = new
+            file_path = new
             {
                 type = "string",
                 description = "The path to the file to write"
@@ -96,30 +105,37 @@ public class WriteFileTool : ITool
             content = new
             {
                 type = "string",
-                description = "The content to write to the file"
+                description = "The complete content to write to the file"
+            },
+            require_approval = new
+            {
+                type = "boolean",
+                description = "Whether to require user approval before writing (default: true)"
             }
         },
-        required = new[] { "path", "content" }
+        required = new[] { "file_path", "content" }
     });
 
     public async Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
         try
         {
-            JsonElement pathElement;
-            if (!(arguments.TryGetProperty("path", out pathElement) || arguments.TryGetProperty("file_path", out pathElement)) ||
+            if (!arguments.TryGetProperty("file_path", out var pathElement) ||
                 !arguments.TryGetProperty("content", out var contentElement))
             {
                 return new ToolResult
                 {
-                    Content = "Missing required parameters: path and content are required",
+                    Content = "Missing required parameters: file_path and content are required",
                     IsError = true,
-                    ErrorMessage = "Both path and content parameters are required"
+                    ErrorMessage = "Both file_path and content parameters are required"
                 };
             }
 
             var filePath = pathElement.GetString();
             var content = contentElement.GetString();
+            var requireApproval = arguments.TryGetProperty("require_approval", out var approvalElement)
+                ? approvalElement.GetBoolean()
+                : true;
 
             if (string.IsNullOrEmpty(filePath))
             {
@@ -130,20 +146,42 @@ public class WriteFileTool : ITool
                     ErrorMessage = "File path cannot be empty"
                 };
             }
-            
-            if (!Path.IsPathFullyQualified(filePath))
+
+            var request = new WriteFileRequest(filePath, content ?? string.Empty, requireApproval);
+            var result = await _fileEditService.WriteFileAsync(request, cancellationToken);
+
+            if (!result.Success)
             {
-                filePath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
+                // Handle user cancellation as success, not error
+                if (result.ErrorCode == "USER_CANCELLED")
+                {
+                    return new ToolResult
+                    {
+                        Content = "Operation cancelled by user.",
+                        IsError = false,
+                        UserCancelled = true
+                    };
+                }
+
+                return new ToolResult
+                {
+                    Content = result.ErrorMessage ?? "File write failed",
+                    IsError = true,
+                    ErrorMessage = result.ErrorMessage
+                };
             }
 
-            var directory = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            var message = $"Successfully wrote to {filePath}";
+            if (result.Stats != null)
             {
-                Directory.CreateDirectory(directory);
+                message += $". Changes: +{result.Stats.LinesAdded}/-{result.Stats.LinesRemoved} lines";
+            }
+            if (result.TokensSaved.HasValue && result.TokensSaved > 0)
+            {
+                message += $". Tokens saved (est): {result.TokensSaved}";
             }
 
-            await File.WriteAllTextAsync(filePath, content ?? string.Empty, cancellationToken);
-            return new ToolResult { Content = $"Successfully wrote to {filePath}" };
+            return new ToolResult { Content = message };
         }
         catch (Exception ex)
         {

@@ -115,9 +115,9 @@ public class InteractiveChatLoop
         _console.WriteLine();
         
         _console.Write(new Rule("[cyan]Welcome to CodePunk[/]"));
-    _console.MarkupLine("💬 Start chatting with AI or type [cyan]/help[/] for commands");
-    _console.MarkupLine("🛠  First time? Run [cyan]/setup[/] to select a provider & store your API key");
-    _console.MarkupLine("🔁 Added a key? Use [cyan]/reload[/] to refresh providers");
+        _console.MarkupLine("💬 Start chatting with AI or type [cyan]/help[/] for commands");
+        _console.MarkupLine("🛠  First time? Run [cyan]/setup[/] to select a provider & store your API key");
+        _console.MarkupLine("🔁 Added a key? Use [cyan]/reload[/] to refresh providers");
         _console.MarkupLine("🚀 Type [cyan]/new[/] to start a new session");
         _console.MarkupLine("❌ Press [cyan]Ctrl+C[/] or type [cyan]/quit[/] to exit");
         _console.WriteLine();
