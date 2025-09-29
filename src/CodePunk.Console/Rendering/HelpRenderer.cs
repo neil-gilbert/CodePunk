@@ -224,13 +224,12 @@ internal static class HelpRenderer
 
     private static bool HasAnyApiKey()
     {
-        return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")) ||
-               !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+        return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
     }
 
     private static void RenderNoKeyTip(IAnsiConsole console)
     {
-        var p = new Panel(new Markup("[yellow]No AI provider key detected.[/]\nSet [green]OPENAI_API_KEY[/] or run:\n[green]codepunk auth login --provider openai --key sk-...[/]"))
+        var p = new Panel(new Markup("[yellow]No AI provider key detected.[/]\nSet [green]ANTHROPIC_API_KEY[/] or run:\n[green]codepunk auth login --provider anthropic --key sk-...[/]"))
             .Header("Next Step")
             .Border(BoxBorder.Rounded)
             .BorderStyle(new Style(Color.Yellow));

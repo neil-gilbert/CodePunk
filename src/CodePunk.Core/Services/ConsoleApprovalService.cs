@@ -37,7 +37,7 @@ public class ConsoleApprovalService : IApprovalService
             if (!string.IsNullOrEmpty(diff))
             {
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[yellow]Changes Preview:[/]");
+                AnsiConsole.MarkupLine("[dim]Changes Preview:[/]");
 
                 var diffSections = ParseDiffIntoSections(diff);
                 DisplaySideBySideDiff(diffSections, request, stats);
@@ -148,7 +148,7 @@ public class ConsoleApprovalService : IApprovalService
         if (filteredLines.Count > maxLinesTotal)
         {
             var changeCount = filteredLines.Count(l => l.Type != DiffLineType.Context);
-            AnsiConsole.MarkupLine($"[yellow]Showing first {maxLinesTotal} lines ({changeCount} total changes)[/]");
+            AnsiConsole.MarkupLine($"[dim]Showing first {maxLinesTotal} lines ({changeCount} total changes)[/]");
             filteredLines = filteredLines.Take(maxLinesTotal).ToList();
         }
 
@@ -159,12 +159,12 @@ public class ConsoleApprovalService : IApprovalService
         if (isFileCreation)
         {
             var additionLines = filteredLines.Select(line =>
-                $"[green]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}");
+                $"[cadetblue]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}");
 
             var creationPanel = new Panel(new Markup(string.Join("\n", additionLines)))
-                .Header("[green]New File Content[/]", Justify.Left)
+                .Header("[cadetblue]New File Content[/]", Justify.Left)
                 .Border(BoxBorder.Rounded)
-                .BorderStyle(new Style(Color.Green4))
+                .BorderStyle(new Style(Color.CadetBlue))
                 .Expand();
 
             var paddedCreationPanel = new Padder(creationPanel, new Padding(0, 0, 0, 7));
@@ -184,18 +184,18 @@ public class ConsoleApprovalService : IApprovalService
                     unifiedLines.Add($"[dim]{lineNum,3}[/]   {Markup.Escape(line.Content)}");
                     break;
                 case DiffLineType.Deletion:
-                    unifiedLines.Add($"[red]{line.OldLineNum,3}[/] [white on red3_1]- {Markup.Escape(line.Content)}[/]");
+                    unifiedLines.Add($"[indianred]{line.OldLineNum,3}[/] [white on indianred]- {Markup.Escape(line.Content)}[/]");
                     break;
                 case DiffLineType.Addition:
-                    unifiedLines.Add($"[green]{line.NewLineNum,3}[/] [white on green4]+ {Markup.Escape(line.Content)}[/]");
+                    unifiedLines.Add($"[cadetblue]{line.NewLineNum,3}[/] [white on cadetblue]+ {Markup.Escape(line.Content)}[/]");
                     break;
             }
         }
 
         var diffPanel = new Panel(new Markup(string.Join("\n", unifiedLines)))
-            .Header("[yellow]Changes[/]", Justify.Left)
+            .Header("[grey37]Changes[/]", Justify.Left)
             .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Yellow))
+            .BorderStyle(new Style(Color.Grey37))
             .Expand();
 
         var paddedDiffPanel = new Padder(diffPanel, new Padding(0, 0, 0, 7));
