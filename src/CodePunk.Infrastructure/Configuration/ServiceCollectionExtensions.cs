@@ -1,4 +1,5 @@
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Configuration;
 using CodePunk.Core.Services;
 using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
@@ -65,6 +66,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiffService, DiffService>();
         services.AddScoped<IApprovalService, ConsoleApprovalService>();
         services.AddScoped<IFileEditService, FileEditService>();
+
+        // Configure shell command options
+        services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
 
         // Add tools (Gemini CLI pattern)
         services.AddScoped<ITool, ReadFileTool>();
