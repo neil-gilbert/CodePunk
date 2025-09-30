@@ -156,15 +156,22 @@ public class ConsoleApprovalService : IApprovalService
 
         var isFileCreation = filteredLines.All(l => l.Type == DiffLineType.Addition);
 
+        // Calculate padding width for full-width background
+        var availableWidth = Math.Max(80, System.Console.WindowWidth - 10);
+
         if (isFileCreation)
         {
             var additionLines = filteredLines.Select(line =>
-                $"[cadetblue]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}");
+            {
+                var content = $"[cadetblue]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}";
+                var visibleLength = 4 + line.Content.Length; // line number + space + content
+                var padding = Math.Max(0, availableWidth - visibleLength);
+                return $"[on grey11]{content}{new string(' ', padding)}[/]";
+            });
 
             var creationPanel = new Panel(new Markup(string.Join("\n", additionLines)))
                 .Header("[cadetblue]New File Content[/]", Justify.Left)
-                .Border(BoxBorder.Rounded)
-                .BorderStyle(new Style(Color.CadetBlue))
+                .Border(BoxBorder.None)
                 .Expand();
 
             var paddedCreationPanel = new Padder(creationPanel, new Padding(0, 0, 0, 7));
@@ -177,25 +184,35 @@ public class ConsoleApprovalService : IApprovalService
 
         foreach (var line in filteredLines)
         {
+            string content;
+            int visibleLength;
+
             switch (line.Type)
             {
                 case DiffLineType.Context:
                     var lineNum = line.OldLineNum != -1 ? line.OldLineNum : line.NewLineNum;
-                    unifiedLines.Add($"[dim]{lineNum,3}[/]   {Markup.Escape(line.Content)}");
+                    content = $"[dim]{lineNum,3}[/]   {Markup.Escape(line.Content)}";
+                    visibleLength = 6 + line.Content.Length;
                     break;
                 case DiffLineType.Deletion:
-                    unifiedLines.Add($"[indianred]{line.OldLineNum,3}[/] [white on indianred]- {Markup.Escape(line.Content)}[/]");
+                    content = $"[indianred]{line.OldLineNum,3}[/] [white on indianred]- {Markup.Escape(line.Content)}[/]";
+                    visibleLength = 6 + line.Content.Length;
                     break;
                 case DiffLineType.Addition:
-                    unifiedLines.Add($"[cadetblue]{line.NewLineNum,3}[/] [white on cadetblue]+ {Markup.Escape(line.Content)}[/]");
+                    content = $"[cadetblue]{line.NewLineNum,3}[/] [white on cadetblue]+ {Markup.Escape(line.Content)}[/]";
+                    visibleLength = 6 + line.Content.Length;
                     break;
+                default:
+                    continue;
             }
+
+            var padding = Math.Max(0, availableWidth - visibleLength);
+            unifiedLines.Add($"[on grey11]{content}{new string(' ', padding)}[/]");
         }
 
         var diffPanel = new Panel(new Markup(string.Join("\n", unifiedLines)))
             .Header("[grey37]Changes[/]", Justify.Left)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Grey37))
+            .Border(BoxBorder.None)
             .Expand();
 
         var paddedDiffPanel = new Padder(diffPanel, new Padding(0, 0, 0, 7));
