@@ -20,7 +20,6 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, 
         IConfiguration configuration)
     {
-        // Add database with performance optimizations
         var connectionString = configuration.GetConnectionString("DefaultConnection") 
             ?? "Data Source=codepunk.db";
 
@@ -31,11 +30,8 @@ public static class ServiceCollectionExtensions
                 sqliteOptions.CommandTimeout(30);
             });
             
-            // Performance optimizations
             options.EnableServiceProviderCaching();
             options.EnableDetailedErrors(false); // Disable in production
-            
-            // Disable change tracking for read queries by default
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
         });
 
@@ -49,34 +45,27 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IFileHistoryService, FileHistoryService>();
 
-    // Session summarizer (heuristic/default)
-    services.AddScoped<ISessionSummarizer, HeuristicSessionSummarizer>();
+        services.AddScoped<ISessionSummarizer, HeuristicSessionSummarizer>();
 
-        // Add prompt services
         services.AddSingleton<IPromptProvider, PromptProvider>();
 
-        // Add LLM services
         services.AddScoped<ILLMService, LLMService>();
         services.AddScoped<IToolService, ToolService>();
 
-        // Add chat services
         services.AddScoped<InteractiveChatSession>();
 
-        // Add file editing services (Gemini CLI pattern)
         services.AddScoped<IDiffService, DiffService>();
         services.AddScoped<IApprovalService, ConsoleApprovalService>();
         services.AddScoped<IFileEditService, FileEditService>();
 
-        // Configure shell command options
+        
         services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
 
-        // Add tools (Gemini CLI pattern)
         services.AddScoped<ITool, ReadFileTool>();
         services.AddScoped<ITool, WriteFileTool>();
         services.AddScoped<ITool, ReplaceInFileTool>();
         services.AddScoped<ITool, ShellTool>();
 
-        // Add LLM providers
         services.AddLLMProviders(configuration);
 
         return services;
@@ -86,18 +75,16 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Register provider factory
         services.AddSingleton<ILLMProviderFactory, LLMProviderFactory>();
 
-        // Add OpenAI provider
         var openAIApiKey = configuration["AI:Providers:OpenAI:ApiKey"] ?? 
-                          configuration["OpenAI:ApiKey"] ?? // Backward compatibility
+                          configuration["OpenAI:ApiKey"] ?? 
                           Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? "";
 
             if (!string.IsNullOrEmpty(openAIApiKey))
             {
                 services.AddHttpClient<OpenAIProvider>()
-                    .AddStandardResilienceHandler(); // Retry, timeout, circuit breaker
+                    .AddStandardResilienceHandler(); 
             services.AddTransient<OpenAIProvider>(provider =>
             {
                 var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
@@ -116,7 +103,6 @@ public static class ServiceCollectionExtensions
             });
         }
 
-        // Add Anthropic provider
         var anthropicApiKey = configuration["AI:Providers:Anthropic:ApiKey"] ?? 
                              Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? "";
 
