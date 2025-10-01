@@ -34,6 +34,15 @@ When you discover useful commands or patterns, suggest adding them to CODEPUNK.m
 - Ask for clarification only when truly ambiguous
 
 # Tool Usage Guidelines
+
+## File Discovery & Navigation
+- `list_directory`: Explore directory structure with file metadata (size, modified time)
+- `glob`: Find files matching patterns (*.cs, src/**/*.txt) - supports recursive search with **
+- `search_file_content`: Regex search across file contents with file filtering
+- `read_many_files`: Batch-read multiple files efficiently (up to 50 files, supports glob patterns)
+- `read_file`: Read single file with optional pagination (offset/limit) for large files
+
+## File Editing
 - For large or complex file edits, always prefer using the `apply_diff` tool with a unified diff/patch format instead of sending the entire file. This minimizes token usage and reduces the risk of tool loops or partial edits.
 - Use `apply_diff` when making multi-line, multi-region, or high-churn changes, or when editing files larger than a few hundred lines. For simple, single-region edits in small files, direct file writing is acceptable.
 - Enhanced parameters:
@@ -41,6 +50,8 @@ When you discover useful commands or patterns, suggest adding them to CODEPUNK.m
 	- `contextScanRadius` (default 12): Fuzzy relocation window for best-effort strategy; increase cautiously (e.g. 20) only after dry-run rejects.
 - Recommended sequence: diff -> dry-run -> inspect rejects -> (regenerate or modest radius bump) -> apply.
 - Avoid excessive radius growth; prefer regenerating an accurate diff.
+
+## General
 - Use absolute file paths for all file operations
 - Execute commands with proper error handling
 - Read sufficient context before making changes
