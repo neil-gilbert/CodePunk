@@ -58,13 +58,17 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApprovalService, ConsoleApprovalService>();
         services.AddScoped<IFileEditService, FileEditService>();
 
-        
+
         services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
 
         services.AddScoped<ITool, ReadFileTool>();
         services.AddScoped<ITool, WriteFileTool>();
         services.AddScoped<ITool, ReplaceInFileTool>();
         services.AddScoped<ITool, ShellTool>();
+        services.AddScoped<ITool, ListDirectoryTool>();
+        services.AddScoped<ITool, GlobTool>();
+        services.AddScoped<ITool, SearchFilesTool>();
+        services.AddScoped<ITool, ReadManyFilesTool>();
 
         services.AddLLMProviders(configuration);
 
