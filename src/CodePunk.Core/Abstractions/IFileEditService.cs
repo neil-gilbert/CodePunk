@@ -3,7 +3,7 @@ using CodePunk.Core.Models.FileEdit;
 namespace CodePunk.Core.Abstractions;
 
 /// <summary>
-/// Service for performing file editing operations following the Gemini CLI pattern
+/// Service for performing file editing operations
 /// </summary>
 public interface IFileEditService
 {

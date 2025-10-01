@@ -6,7 +6,7 @@ using CodePunk.Core.Models.FileEdit;
 namespace CodePunk.Core.Tools;
 
 /// <summary>
-/// Tool for replacing exact text in files using literal matching following Gemini CLI pattern
+/// Tool for replacing exact text in files using literal matching
 /// </summary>
 public class ReplaceInFileTool : ITool
 {
