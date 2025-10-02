@@ -16,6 +16,7 @@ namespace CodePunk.ComponentTests;
 /// End-to-end behavioral tests for tools - verifying that what AI "wants to do" actually happens
 /// These test the outer boundary: AI tool calls → file system changes
 /// </summary>
+[Collection("Sequential")]
 public class ToolBehaviorTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;

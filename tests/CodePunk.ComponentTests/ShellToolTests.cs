@@ -9,6 +9,7 @@ using Xunit;
 
 namespace CodePunk.ComponentTests;
 
+[Collection("Sequential")]
 public class ShellToolTests : IDisposable
 {
     private readonly string _testWorkspace;

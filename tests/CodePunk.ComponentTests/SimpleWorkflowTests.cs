@@ -17,6 +17,7 @@ namespace CodePunk.ComponentTests;
 /// Simple component tests that verify core behaviors work end-to-end
 /// These tests focus on user-visible outcomes rather than implementation details
 /// </summary>
+[Collection("Sequential")]
 public class SimpleWorkflowTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;

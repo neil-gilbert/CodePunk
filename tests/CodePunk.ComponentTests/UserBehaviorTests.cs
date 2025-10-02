@@ -18,6 +18,7 @@ namespace CodePunk.ComponentTests;
 /// End-to-end behavioral tests that verify complete user workflows from request to outcome
 /// These test at the outermost boundaries: user sends message → AI responds → file system changes
 /// </summary>
+[Collection("Sequential")]
 public class UserBehaviorTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;
