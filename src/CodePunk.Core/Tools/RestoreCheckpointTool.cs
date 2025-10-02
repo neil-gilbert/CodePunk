@@ -39,6 +39,8 @@ public class RestoreCheckpointTool : ITool
     {
         try
         {
+            await _checkpointService.InitializeAsync(Directory.GetCurrentDirectory(), cancellationToken);
+
             if (!arguments.TryGetProperty("checkpoint_id", out var checkpointIdElement))
             {
                 return new ToolResult

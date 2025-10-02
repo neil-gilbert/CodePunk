@@ -64,7 +64,7 @@ public static class ServiceCollectionExtensions
         services.Configure<CheckpointOptions>(configuration.GetSection(CheckpointOptions.SectionName));
 
         services.AddSingleton<GitCommandExecutor>();
-        services.AddSingleton<ICheckpointService, CheckpointService>();
+        services.AddScoped<ICheckpointService, CheckpointService>();
 
         services.AddScoped<ITool, ReadFileTool>();
         services.AddScoped<ITool, WriteFileTool>();

@@ -28,6 +28,8 @@ public class CheckpointsCommand : ChatCommand
             limit = parsedLimit;
         }
 
+        await _checkpointService.InitializeAsync(Directory.GetCurrentDirectory(), cancellationToken);
+
         console.WriteLine();
         console.Write(ConsoleStyles.HeaderRule("Available Checkpoints"));
         console.WriteLine();
@@ -108,6 +110,8 @@ public class RestoreCommand : ChatCommand
             console.WriteLine();
             return CommandResult.Ok();
         }
+
+        await _checkpointService.InitializeAsync(Directory.GetCurrentDirectory(), cancellationToken);
 
         var checkpointId = args[0];
 

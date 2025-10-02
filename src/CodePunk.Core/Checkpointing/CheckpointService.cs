@@ -233,6 +233,11 @@ public class CheckpointService : ICheckpointService
         string checkpointId,
         CancellationToken cancellationToken = default)
     {
+        if (!_initialized)
+        {
+            return CheckpointResult<CheckpointMetadata>.Fail("Service not initialized");
+        }
+
         try
         {
             var metadataFile = Path.Combine(_metadataPath!, $"{checkpointId}.json");
@@ -396,4 +401,5 @@ public class CheckpointService : ICheckpointService
     {
         return message.Replace("\"", "\\\"");
     }
+
 }

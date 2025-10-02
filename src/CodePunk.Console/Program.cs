@@ -55,21 +55,6 @@ await host.Services.EnsureDatabaseCreatedAsync();
 
 try
 {
-    var checkpointService = host.Services.GetService<CodePunk.Core.Checkpointing.ICheckpointService>();
-    if (checkpointService != null)
-    {
-        var workspacePath = Directory.GetCurrentDirectory();
-        await checkpointService.InitializeAsync(workspacePath);
-        Log.Logger.Debug("Checkpoint service initialized for workspace: {WorkspacePath}", workspacePath);
-    }
-}
-catch (Exception ex)
-{
-    Log.Logger.Warning(ex, "Checkpoint service initialization failed");
-}
-
-try
-{
     var bootstrap = host.Services.GetService<CodePunk.Console.Providers.ProviderBootstrap>();
     if (bootstrap != null)
     {
