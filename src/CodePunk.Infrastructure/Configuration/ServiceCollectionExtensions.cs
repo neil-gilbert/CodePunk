@@ -5,6 +5,7 @@ using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
 using CodePunk.Core.Providers.Anthropic;
 using CodePunk.Core.Chat;
+using CodePunk.Core.Checkpointing;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -60,6 +61,10 @@ public static class ServiceCollectionExtensions
 
 
         services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
+        services.Configure<CheckpointOptions>(configuration.GetSection(CheckpointOptions.SectionName));
+
+        services.AddSingleton<GitCommandExecutor>();
+        services.AddSingleton<ICheckpointService, CheckpointService>();
 
         services.AddScoped<ITool, ReadFileTool>();
         services.AddScoped<ITool, WriteFileTool>();
@@ -69,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, GlobTool>();
         services.AddScoped<ITool, SearchFilesTool>();
         services.AddScoped<ITool, ReadManyFilesTool>();
+        services.AddScoped<ITool, RestoreCheckpointTool>();
 
         services.AddLLMProviders(configuration);
 

@@ -46,6 +46,8 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, SetupCommand>();
         services.AddTransient<ChatCommand, ReloadCommand>();
         services.AddTransient<ChatCommand, ProvidersCommand>();
+        services.AddTransient<ChatCommand, CheckpointsCommand>();
+        services.AddTransient<ChatCommand, RestoreCommand>();
         services.AddSingleton<CommandProcessor>();
         
         return services;
