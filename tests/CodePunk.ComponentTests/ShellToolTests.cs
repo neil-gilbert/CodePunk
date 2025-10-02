@@ -12,9 +12,11 @@ namespace CodePunk.ComponentTests;
 public class ShellToolTests : IDisposable
 {
     private readonly string _testWorkspace;
+    private readonly string _originalDirectory;
 
     public ShellToolTests()
     {
+        _originalDirectory = Environment.CurrentDirectory;
         _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_shell_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testWorkspace);
         Environment.CurrentDirectory = _testWorkspace;
@@ -324,6 +326,10 @@ public class ShellToolTests : IDisposable
 
     public void Dispose()
     {
+        if (Directory.Exists(_originalDirectory))
+        {
+            Environment.CurrentDirectory = _originalDirectory;
+        }
         if (Directory.Exists(_testWorkspace))
         {
             Directory.Delete(_testWorkspace, recursive: true);

@@ -20,9 +20,11 @@ public class ToolBehaviorTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly string _testWorkspace;
+    private readonly string _originalDirectory;
 
     public ToolBehaviorTests()
     {
+        _originalDirectory = Environment.CurrentDirectory;
         _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testWorkspace);
         Environment.CurrentDirectory = _testWorkspace;
@@ -226,6 +228,10 @@ public class ToolBehaviorTests : IDisposable
     public void Dispose()
     {
         _serviceProvider?.Dispose();
+        if (Directory.Exists(_originalDirectory))
+        {
+            Environment.CurrentDirectory = _originalDirectory;
+        }
         if (Directory.Exists(_testWorkspace))
         {
             Directory.Delete(_testWorkspace, recursive: true);

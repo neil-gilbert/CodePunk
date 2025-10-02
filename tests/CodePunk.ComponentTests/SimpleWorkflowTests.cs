@@ -22,9 +22,11 @@ public class SimpleWorkflowTests : IDisposable
     private readonly ServiceProvider _serviceProvider;
     private readonly Mock<ILLMService> _mockLLMService;
     private readonly string _testWorkspace;
+    private readonly string _originalDirectory;
 
     public SimpleWorkflowTests()
     {
+        _originalDirectory = Environment.CurrentDirectory;
         _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testWorkspace);
         Environment.CurrentDirectory = _testWorkspace;
@@ -161,6 +163,10 @@ public class SimpleWorkflowTests : IDisposable
     public void Dispose()
     {
         _serviceProvider?.Dispose();
+        if (Directory.Exists(_originalDirectory))
+        {
+            Environment.CurrentDirectory = _originalDirectory;
+        }
         if (Directory.Exists(_testWorkspace))
         {
             Directory.Delete(_testWorkspace, recursive: true);

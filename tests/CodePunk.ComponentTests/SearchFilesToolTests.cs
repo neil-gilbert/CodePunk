@@ -9,9 +9,11 @@ namespace CodePunk.ComponentTests;
 public class SearchFilesToolTests : IDisposable
 {
     private readonly string _testWorkspace;
+    private readonly string _originalDirectory;
 
     public SearchFilesToolTests()
     {
+        _originalDirectory = Environment.CurrentDirectory;
         _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_search_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testWorkspace);
         Environment.CurrentDirectory = _testWorkspace;
@@ -253,6 +255,10 @@ public class SearchFilesToolTests : IDisposable
 
     public void Dispose()
     {
+        if (Directory.Exists(_originalDirectory))
+        {
+            Environment.CurrentDirectory = _originalDirectory;
+        }
         if (Directory.Exists(_testWorkspace))
         {
             Directory.Delete(_testWorkspace, recursive: true);

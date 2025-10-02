@@ -24,6 +24,11 @@ public class CheckpointService : ICheckpointService
         string workspacePath,
         CancellationToken cancellationToken = default)
     {
+        if (_initialized && _workspacePath == Path.GetFullPath(workspacePath))
+        {
+            return CheckpointResult.Ok();
+        }
+
         try
         {
             _workspacePath = Path.GetFullPath(workspacePath);
