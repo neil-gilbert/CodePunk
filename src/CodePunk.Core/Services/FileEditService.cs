@@ -193,8 +193,8 @@ public class FileEditService : IFileEditService
         if (string.IsNullOrWhiteSpace(filePath))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path cannot be empty");
 
-        if (filePath.Contains("..") || filePath.StartsWith("/") || filePath.StartsWith("\\"))
-            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path");
+        if (filePath.Contains(".."))
+            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Path traversal not allowed");
 
         var fullPath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
         var workspaceRoot = Directory.GetCurrentDirectory();

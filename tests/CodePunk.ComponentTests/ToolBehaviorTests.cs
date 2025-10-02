@@ -144,7 +144,7 @@ public class ToolBehaviorTests : IDisposable
         // Most important: No file created outside workspace
         File.Exists("../outside_workspace.txt").Should().BeFalse();
 
-        result.Content.Should().Contain("Invalid file path");
+        result.Content.Should().Contain("Path traversal not allowed");
     }
 
     [Fact]
