@@ -29,7 +29,6 @@ public class ConsoleApprovalService : IApprovalService
     {
         try
         {
-            // Check if git session is active - if so, auto-approve with preview
             if (_gitSessionService != null)
             {
                 var gitSession = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
@@ -37,7 +36,6 @@ public class ConsoleApprovalService : IApprovalService
                 {
                     _logger.LogInformation("Auto-approving file edit (git session active): {FilePath}", request.FilePath);
 
-                    // Show condensed preview
                     AnsiConsole.MarkupLine($"[dim]→[/] [yellow]{request.FilePath}[/] [dim]+{stats.LinesAdded}/-{stats.LinesRemoved} lines[/]");
 
                     if (!string.IsNullOrEmpty(diff))
@@ -182,7 +180,6 @@ public class ConsoleApprovalService : IApprovalService
 
         var isFileCreation = filteredLines.All(l => l.Type == DiffLineType.Addition);
 
-        // Calculate padding width for full-width background
         var availableWidth = Math.Max(80, System.Console.WindowWidth - 10);
 
         if (isFileCreation)
