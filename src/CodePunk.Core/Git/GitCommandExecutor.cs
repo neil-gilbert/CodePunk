@@ -22,7 +22,7 @@ public class GitCommandExecutor : IGitCommandExecutor
 
     private static string FindGitExecutable()
     {
-        // Try to find git in PATH using 'which' (Unix) or 'where' (Windows)
+    
         try
         {
             var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -35,7 +35,7 @@ public class GitCommandExecutor : IGitCommandExecutor
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = "/"  // Set to root to avoid any directory-dependent issues
+                WorkingDirectory = "/" 
             };
 
             using var process = Process.Start(startInfo);
@@ -45,14 +45,12 @@ public class GitCommandExecutor : IGitCommandExecutor
                 process.WaitForExit();
                 if (process.ExitCode == 0 && !string.IsNullOrEmpty(output))
                 {
-                    // On Windows, 'where' returns all matches on separate lines; take the first
                     return output.Split('\n')[0].Trim();
                 }
             }
         }
         catch
         {
-            // Fall back to just "git" if we can't find the full path
         }
 
         return "git";
