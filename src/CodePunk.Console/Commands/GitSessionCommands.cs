@@ -35,7 +35,7 @@ public class AcceptSessionCommand : ChatCommand
 
         if (success)
         {
-            AnsiConsole.MarkupLine(ConsoleStyles.Success($"✓ Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged"));
+            AnsiConsole.MarkupLine(ConsoleStyles.Success($"Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged"));
         }
         else
         {
@@ -73,7 +73,7 @@ public class RejectSessionCommand : ChatCommand
 
         if (success)
         {
-            AnsiConsole.MarkupLine(ConsoleStyles.Success($"✓ Session rejected: {session.ToolCallCommits.Count} changes discarded"));
+            AnsiConsole.MarkupLine(ConsoleStyles.Success($"Session rejected: {session.ToolCallCommits.Count} changes discarded"));
         }
         else
         {
