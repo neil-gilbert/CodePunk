@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Tools;
 using FluentAssertions;
 using Xunit;
@@ -6,22 +7,18 @@ using Xunit;
 namespace CodePunk.ComponentTests;
 
 [Collection("Sequential")]
-public class ReadFileToolTests : IDisposable
+public class ReadFileToolTests : WorkspaceTestBase
 {
-    private readonly string _testWorkspace;
 
-    public ReadFileToolTests()
+    public ReadFileToolTests() : base("read_file")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_readfile_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
     }
 
     [Fact]
     public async Task ReadFile_SmallFile_ReturnsCompleteContent()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "small.txt");
+        var fileName = Path.Combine(TestWorkspace, "small.txt");
         var expectedContent = "Line 1\nLine 2\nLine 3";
         await File.WriteAllTextAsync(fileName, expectedContent);
 
@@ -39,7 +36,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_WithOffset_ReturnsLinesFromOffset()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "numbered.txt");
+        var fileName = Path.Combine(TestWorkspace, "numbered.txt");
         var lines = Enumerable.Range(1, 100).Select(i => $"Line {i}").ToArray();
         await File.WriteAllLinesAsync(fileName, lines);
 
@@ -63,7 +60,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_WithLimit_ShowsPaginationMessage()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "large.txt");
+        var fileName = Path.Combine(TestWorkspace, "large.txt");
         var lines = Enumerable.Range(1, 200).Select(i => $"Line {i}").ToArray();
         await File.WriteAllLinesAsync(fileName, lines);
 
@@ -85,7 +82,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_OffsetBeyondFileEnd_ReturnsError()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "short.txt");
+        var fileName = Path.Combine(TestWorkspace, "short.txt");
         await File.WriteAllLinesAsync(fileName, new[] { "Line 1", "Line 2" });
 
         var arguments = JsonDocument.Parse($@"{{
@@ -103,7 +100,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_NegativeOffset_ReturnsError()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "test.txt");
+        var fileName = Path.Combine(TestWorkspace, "test.txt");
         await File.WriteAllTextAsync(fileName, "content");
 
         var arguments = JsonDocument.Parse($@"{{
@@ -121,7 +118,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_ZeroLimit_ReturnsError()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "test.txt");
+        var fileName = Path.Combine(TestWorkspace, "test.txt");
         await File.WriteAllTextAsync(fileName, "content");
 
         var arguments = JsonDocument.Parse($@"{{
@@ -139,7 +136,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_LastPage_NoNextOffsetSuggestion()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "final.txt");
+        var fileName = Path.Combine(TestWorkspace, "final.txt");
         var lines = Enumerable.Range(1, 10).Select(i => $"Line {i}").ToArray();
         await File.WriteAllLinesAsync(fileName, lines);
 
@@ -160,7 +157,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_VeryLongLine_TruncatesLine()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "longline.txt");
+        var fileName = Path.Combine(TestWorkspace, "longline.txt");
         var longLine = new string('A', 3000);
         await File.WriteAllTextAsync(fileName, longLine);
 
@@ -179,7 +176,7 @@ public class ReadFileToolTests : IDisposable
     public async Task ReadFile_NonExistentFile_ReturnsError()
     {
         var tool = new ReadFileTool();
-        var fileName = Path.Combine(_testWorkspace, "doesnotexist.txt");
+        var fileName = Path.Combine(TestWorkspace, "doesnotexist.txt");
 
         var arguments = JsonDocument.Parse($@"{{
             ""path"": ""{fileName.Replace("\\", "\\\\")}""
@@ -204,13 +201,5 @@ public class ReadFileToolTests : IDisposable
 
         result.IsError.Should().BeTrue();
         result.ErrorMessage.Should().Contain("cannot be empty");
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
     }
 }

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Configuration;
-using CodePunk.Core.Services;
 using CodePunk.Core.Tools;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
@@ -9,15 +9,11 @@ using Xunit;
 
 namespace CodePunk.ComponentTests;
 
-public class ShellToolTests : IDisposable
+public class ShellToolTests : WorkspaceTestBase
 {
-    private readonly string _testWorkspace;
 
-    public ShellToolTests()
+    public ShellToolTests() : base("shell")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_shell_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
     }
 
     [Fact]
@@ -49,7 +45,7 @@ public class ShellToolTests : IDisposable
         var options = CreateDefaultOptions();
         var tool = new ShellTool(options);
 
-        var testDir = Path.Combine(_testWorkspace, "subdir");
+        var testDir = Path.Combine(TestWorkspace, "subdir");
         Directory.CreateDirectory(testDir);
 
         var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -320,13 +316,5 @@ public class ShellToolTests : IDisposable
             AllowedCommands = new List<string>(),
             BlockedCommands = new List<string>()
         });
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
     }
 }

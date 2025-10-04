@@ -3,8 +3,8 @@ using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
-using CodePunk.Core.Models.FileEdit;
 using CodePunk.Core.Services;
+using CodePunk.Core.Tools;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,19 +18,15 @@ namespace CodePunk.ComponentTests;
 /// End-to-end behavioral tests that verify complete user workflows from request to outcome
 /// These test at the outermost boundaries: user sends message → AI responds → file system changes
 /// </summary>
-public class UserBehaviorTests : IDisposable
+public class UserBehaviorTests : WorkspaceTestBase
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly Mock<ILLMService> _mockLLMService;
-    private readonly string _testWorkspace;
     private readonly List<Message> _capturedLLMMessages = new();
+    private int _llmCallCount = 0;
 
-    public UserBehaviorTests()
+    public UserBehaviorTests() : base("user_behavior")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
-
         _mockLLMService = new Mock<ILLMService>();
         SetupLLMServiceCapture();
 
@@ -204,6 +200,16 @@ public class UserBehaviorTests : IDisposable
         services.AddScoped<IDiffService, DiffService>();
         services.AddScoped<IToolService, ToolService>();
 
+        // Register tools
+        services.AddScoped<ITool, ReadFileTool>();
+        services.AddScoped<ITool, WriteFileTool>();
+        services.AddScoped<ITool, ReplaceInFileTool>();
+        services.AddScoped<ITool, ShellTool>();
+        services.AddScoped<ITool, ListDirectoryTool>();
+        services.AddScoped<ITool, GlobTool>();
+        services.AddScoped<ITool, SearchFilesTool>();
+        services.AddScoped<ITool, ReadManyFilesTool>();
+
         // Test doubles for user interactions
         services.AddScoped<TestApprovalService>();
         services.AddScoped<IApprovalService>(provider => provider.GetRequiredService<TestApprovalService>());
@@ -222,6 +228,13 @@ public class UserBehaviorTests : IDisposable
         // Chat session dependencies
         services.AddSingleton<IChatSessionEventStream, ChatSessionEventStream>();
         services.AddSingleton<IChatSessionOptions, ChatSessionOptions>();
+
+        // Configure shell command options
+        services.Configure<CodePunk.Core.Configuration.ShellCommandOptions>(options =>
+        {
+            options.AllowedCommands = new List<string> { "*" };
+            options.EnableCommandValidation = false;
+        });
     }
 
     private void SetupLLMServiceCapture()
@@ -229,19 +242,100 @@ public class UserBehaviorTests : IDisposable
         _mockLLMService.Setup(x => x.SendMessageAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
             .Callback<IList<Message>, CancellationToken>((messages, _) =>
             {
-                _capturedLLMMessages.AddRange(messages);
+                // Only capture messages that aren't already captured
+                foreach (var msg in messages)
+                {
+                    if (!_capturedLLMMessages.Contains(msg))
+                    {
+                        _capturedLLMMessages.Add(msg);
+                    }
+                }
             })
             .Returns<IList<Message>, CancellationToken>((messages, _) =>
             {
                 // Return the last AI response that was set up
                 return Task.FromResult(_currentAIResponse);
             });
+
+        _mockLLMService.Setup(x => x.SendMessageStreamAsync(It.IsAny<IList<Message>>(), It.IsAny<CancellationToken>()))
+            .Callback<IList<Message>, CancellationToken>((messages, _) =>
+            {
+                // Only capture messages that aren't already captured
+                foreach (var msg in messages)
+                {
+                    if (!_capturedLLMMessages.Contains(msg))
+                    {
+                        _capturedLLMMessages.Add(msg);
+                    }
+                }
+            })
+            .Returns<IList<Message>, CancellationToken>((messages, _) =>
+            {
+                _llmCallCount++;
+                // First call: return the configured response (likely with tool calls)
+                // Subsequent calls: check if there were tool errors and respond accordingly
+                if (_llmCallCount == 1)
+                {
+                    return ConvertMessageToStream(_currentAIResponse);
+                }
+                else
+                {
+                    // Check if last message contains tool errors
+                    var lastMessage = messages.LastOrDefault();
+                    var hasError = lastMessage?.Parts.OfType<ToolResultPart>().Any(p => p.IsError) ?? false;
+
+                    var responseText = hasError
+                        ? "Error: The operation failed due to an invalid path or permission issue"
+                        : "Operation completed successfully";
+
+                    var finalMessage = Message.Create("test", MessageRole.Assistant,
+                        new[] { new TextPart(responseText) });
+                    return ConvertMessageToStream(finalMessage);
+                }
+            });
+    }
+
+    private async IAsyncEnumerable<LLMStreamChunk> ConvertMessageToStream(Message message)
+    {
+        await Task.Yield(); // Make it actually async
+
+        foreach (var part in message.Parts)
+        {
+            if (part is TextPart textPart)
+            {
+                yield return new LLMStreamChunk
+                {
+                    Content = textPart.Content,
+                    IsComplete = false
+                };
+            }
+            else if (part is ToolCallPart toolCallPart)
+            {
+                yield return new LLMStreamChunk
+                {
+                    ToolCall = new ToolCall
+                    {
+                        Id = toolCallPart.Id,
+                        Name = toolCallPart.Name,
+                        Arguments = toolCallPart.Arguments
+                    },
+                    IsComplete = false
+                };
+            }
+        }
+
+        yield return new LLMStreamChunk
+        {
+            IsComplete = true,
+            FinishReason = LLMFinishReason.Stop
+        };
     }
 
     private Message _currentAIResponse = Message.Create("test", MessageRole.Assistant, new[] { new TextPart("Default response") });
 
     private void SetupAIToCallWriteFileTool(string fileName, string content)
     {
+        _llmCallCount = 0; // Reset counter for each test
         var toolCallPart = new ToolCallPart(
             Id: "call_1",
             Name: "write_file",
@@ -257,6 +351,7 @@ public class UserBehaviorTests : IDisposable
 
     private void SetupAIToCallReplaceInFileTool(string fileName, string oldString, string newString)
     {
+        _llmCallCount = 0; // Reset counter for each test
         var toolCallPart = new ToolCallPart(
             Id: "call_1",
             Name: "replace_in_file",
@@ -273,6 +368,7 @@ public class UserBehaviorTests : IDisposable
 
     private void SetupAIToCallMultipleWriteFileTools(string[] fileNames)
     {
+        _llmCallCount = 0; // Reset counter for each test
         var toolCallParts = fileNames.Select((fileName, index) => new ToolCallPart(
             Id: $"call_{index + 1}",
             Name: "write_file",
@@ -291,12 +387,9 @@ public class UserBehaviorTests : IDisposable
         return _serviceProvider.GetRequiredService<TestApprovalService>();
     }
 
-    public void Dispose()
+    public override void Dispose()
     {
         _serviceProvider?.Dispose();
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
+        base.Dispose();
     }
 }

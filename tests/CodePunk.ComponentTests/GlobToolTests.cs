@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Tools;
 using FluentAssertions;
 using Xunit;
@@ -6,28 +7,23 @@ using Xunit;
 namespace CodePunk.ComponentTests;
 
 [Collection("Sequential")]
-public class GlobToolTests : IDisposable
+public class GlobToolTests : WorkspaceTestBase
 {
-    private readonly string _testWorkspace;
-
-    public GlobToolTests()
+    public GlobToolTests() : base("glob_test")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_glob_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
     }
 
     [Fact]
     public async Task Glob_SimpleWildcard_MatchesFiles()
     {
         var tool = new GlobTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "test1.txt"), "1");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "test2.txt"), "2");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "other.log"), "3");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "test1.txt"), "1");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "test2.txt"), "2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "other.log"), "3");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.txt"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -43,19 +39,19 @@ public class GlobToolTests : IDisposable
     public async Task Glob_RecursivePattern_SearchesSubdirectories()
     {
         var tool = new GlobTool();
-        var subdir = Path.Combine(_testWorkspace, "src");
+        var subdir = Path.Combine(TestWorkspace, "src");
         Directory.CreateDirectory(subdir);
         var nestedDir = Path.Combine(subdir, "nested");
         Directory.CreateDirectory(nestedDir);
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "root.cs"), "root");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "root.cs"), "root");
         await File.WriteAllTextAsync(Path.Combine(subdir, "file1.cs"), "file1");
         await File.WriteAllTextAsync(Path.Combine(nestedDir, "file2.cs"), "file2");
         await File.WriteAllTextAsync(Path.Combine(nestedDir, "other.txt"), "other");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""**/*.cs"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -72,11 +68,11 @@ public class GlobToolTests : IDisposable
     public async Task Glob_NoMatches_ReturnsEmpty()
     {
         var tool = new GlobTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file.txt"), "content");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file.txt"), "content");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.doesnotexist"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -89,13 +85,13 @@ public class GlobToolTests : IDisposable
     public async Task Glob_QuestionMarkWildcard_MatchesSingleChar()
     {
         var tool = new GlobTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "1");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file2.txt"), "2");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file10.txt"), "10");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file1.txt"), "1");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file2.txt"), "2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file10.txt"), "10");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""file?.txt"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -111,12 +107,12 @@ public class GlobToolTests : IDisposable
     public async Task Glob_CaseSensitive_RespectsCasing()
     {
         var tool = new GlobTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file.txt"), "lower");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "FILE.TXT"), "upper");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file.txt"), "lower");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "FILE.TXT"), "upper");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.txt"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}"",
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}"",
             ""case_sensitive"": true
         }}").RootElement;
 
@@ -130,12 +126,12 @@ public class GlobToolTests : IDisposable
     public async Task Glob_CaseInsensitive_MatchesBothCases()
     {
         var tool = new GlobTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "lowercase.txt"), "lower");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "UPPERCASE.TXT"), "upper");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "lowercase.txt"), "lower");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "UPPERCASE.TXT"), "upper");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.txt"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}"",
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}"",
             ""case_sensitive"": false
         }}").RootElement;
 
@@ -151,8 +147,8 @@ public class GlobToolTests : IDisposable
     public async Task Glob_SortedByModificationTime_NewestFirst()
     {
         var tool = new GlobTool();
-        var oldFile = Path.Combine(_testWorkspace, "old.txt");
-        var newFile = Path.Combine(_testWorkspace, "new.txt");
+        var oldFile = Path.Combine(TestWorkspace, "old.txt");
+        var newFile = Path.Combine(TestWorkspace, "new.txt");
 
         await File.WriteAllTextAsync(oldFile, "old");
         await Task.Delay(100);
@@ -160,7 +156,7 @@ public class GlobToolTests : IDisposable
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.txt"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -175,7 +171,7 @@ public class GlobToolTests : IDisposable
     public async Task Glob_NonExistentDirectory_ReturnsError()
     {
         var tool = new GlobTool();
-        var nonExistent = Path.Combine(_testWorkspace, "doesnotexist");
+        var nonExistent = Path.Combine(TestWorkspace, "doesnotexist");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""*.txt"",
@@ -207,14 +203,14 @@ public class GlobToolTests : IDisposable
     public async Task Glob_DirectoryPattern_MatchesInSubdirectory()
     {
         var tool = new GlobTool();
-        var srcDir = Path.Combine(_testWorkspace, "src");
+        var srcDir = Path.Combine(TestWorkspace, "src");
         Directory.CreateDirectory(srcDir);
         await File.WriteAllTextAsync(Path.Combine(srcDir, "app.cs"), "code");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "other.cs"), "other");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "other.cs"), "other");
 
         var arguments = JsonDocument.Parse($@"{{
             ""pattern"": ""src/*.cs"",
-            ""path"": ""{_testWorkspace.Replace("\\", "\\\\")}""
+            ""path"": ""{TestWorkspace.Replace("\\", "\\\\")}""
         }}").RootElement;
 
         var result = await tool.ExecuteAsync(arguments);
@@ -225,11 +221,4 @@ public class GlobToolTests : IDisposable
         result.Content.Should().NotContain("other.cs");
     }
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
-    }
 }

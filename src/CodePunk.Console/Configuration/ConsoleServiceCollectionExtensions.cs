@@ -46,8 +46,19 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, SetupCommand>();
         services.AddTransient<ChatCommand, ReloadCommand>();
         services.AddTransient<ChatCommand, ProvidersCommand>();
+
+        // Register git session commands only if git sessions are enabled
+        var gitSessionOptions = configuration?.GetSection("GitSession").Get<Core.GitSession.GitSessionOptions>();
+        var gitSessionEnabled = gitSessionOptions?.Enabled ?? false;
+        if (gitSessionEnabled)
+        {
+            services.AddTransient<ChatCommand, AcceptSessionCommand>();
+            services.AddTransient<ChatCommand, RejectSessionCommand>();
+            services.AddTransient<ChatCommand, SessionStatusCommand>();
+        }
+
         services.AddSingleton<CommandProcessor>();
-        
+
         return services;
     }
 }
