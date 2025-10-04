@@ -56,7 +56,6 @@ public static class ServiceCollectionExtensions
         var gitSessionOptions = configuration?.GetSection("GitSession").Get<GitSessionOptions>();
         var gitSessionEnabled = gitSessionOptions?.Enabled ?? false;
 
-        // Only enable Git session if explicitly configured AND enabled
         if (configuration != null && gitSessionEnabled)
         {
             services.Configure<GitSessionOptions>(configuration.GetSection("GitSession"));
