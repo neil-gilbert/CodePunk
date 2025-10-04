@@ -1,5 +1,7 @@
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
+using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Console.SyntaxHighlighting;
 using Spectre.Console;
 using System.Text;
 using CodePunk.Console.Themes;
@@ -12,6 +14,7 @@ namespace CodePunk.Console.Rendering;
 public class StreamingResponseRenderer
 {
     private readonly IAnsiConsole _console;
+    private readonly ISyntaxHighlighter? _syntaxHighlighter;
     private readonly StringBuilder _buffer = new();
     private bool _isStreaming;
     private DateTime _startUtc;
@@ -23,10 +26,14 @@ public class StreamingResponseRenderer
     private int? _outputTokens;
     private decimal? _estimatedCost;
 
-    public StreamingResponseRenderer(IAnsiConsole console, StreamingRendererOptions? options = null)
+    public StreamingResponseRenderer(
+        IAnsiConsole console,
+        StreamingRendererOptions? options = null,
+        ISyntaxHighlighter? syntaxHighlighter = null)
     {
         _console = console;
         _options = options ?? new StreamingRendererOptions();
+        _syntaxHighlighter = syntaxHighlighter;
     }
 
     public void StartStreaming()
@@ -196,8 +203,30 @@ public class StreamingResponseRenderer
     {
         if (string.IsNullOrEmpty(content)) return;
         var lines = content.Replace("\r\n", "\n").Split('\n');
-        foreach (var line in lines)
+
+        for (int i = 0; i < lines.Length; i++)
         {
+            var line = lines[i];
+
+            // Detect code blocks
+            if (line.StartsWith("```"))
+            {
+                var language = line.Length > 3 ? line[3..].Trim() : "";
+                var codeLines = new List<string>();
+
+                // Collect code block lines
+                i++;
+                while (i < lines.Length && !lines[i].StartsWith("```"))
+                {
+                    codeLines.Add(lines[i]);
+                    i++;
+                }
+
+                RenderCodeBlock(string.Join("\n", codeLines), language);
+                continue;
+            }
+
+            // Markdown rendering
             if (line.StartsWith("### "))
                 _console.MarkupLine($"[bold]{ConsoleStyles.Escape(line[4..])}[/]");
             else if (line.StartsWith("## "))
@@ -208,6 +237,21 @@ public class StreamingResponseRenderer
                 _console.MarkupLine($"  • {ConsoleStyles.Escape(line[2..])}");
             else
                 _console.MarkupLine(ConsoleStyles.Escape(line));
+        }
+    }
+
+    private void RenderCodeBlock(string code, string language)
+    {
+        if (_syntaxHighlighter != null && !string.IsNullOrWhiteSpace(language))
+        {
+            var renderer = new SpectreTokenRenderer(_console);
+            _syntaxHighlighter.Highlight(code, language, renderer);
+        }
+        else
+        {
+            // Fallback: render as plain text with grey color
+            var escaped = ConsoleStyles.Escape(code);
+            _console.MarkupLine($"[grey]{escaped}[/]");
         }
     }
 
