@@ -31,7 +31,13 @@ public static class ConsoleServiceCollectionExtensions
 
         services.AddScoped<InteractiveChatLoop>();
         services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });
-        services.AddSingleton<StreamingResponseRenderer>();
+        services.AddSingleton<StreamingResponseRenderer>(sp =>
+        {
+            var console = sp.GetRequiredService<IAnsiConsole>();
+            var options = sp.GetRequiredService<StreamingRendererOptions>();
+            var highlighter = sp.GetService<Core.SyntaxHighlighting.Abstractions.ISyntaxHighlighter>();
+            return new StreamingResponseRenderer(console, options, highlighter);
+        });
 
         services.AddTransient<ChatCommand, HelpCommand>();
         services.AddTransient<ChatCommand, NewCommand>();
