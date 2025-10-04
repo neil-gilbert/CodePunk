@@ -57,8 +57,7 @@ public class InteractiveChatLoop
             if (!string.IsNullOrEmpty(chunk.ContentDelta)) sb.Append(chunk.ContentDelta);
         }
         _renderer.CompleteStreaming();
-
-        // Check for active git session and prompt for accept/reject
+        
         await PromptGitSessionApprovalAsync(cancellationToken);
 
         return sb.ToString();
@@ -178,7 +177,7 @@ public class InteractiveChatLoop
             var sessionTitle = $"Chat Session {DateTime.Now:yyyy-MM-dd HH:mm}";
             var session = await _chatSession.StartNewSessionAsync(sessionTitle, cancellationToken);
             
-            _console.MarkupLine($"[green]✓[/] Started new session: [cyan]{session.Title}[/]");
+            _console.MarkupLine($"[green][/] Started new session: [cyan]{session.Title}[/]");
             _console.MarkupLine($"[dim]Session ID: {session.Id[..8]}...[/]");
             _console.WriteLine();
         }
@@ -295,7 +294,6 @@ public class InteractiveChatLoop
 
             _renderer.CompleteStreaming();
 
-            // Check for active git session and prompt for accept/reject
             await PromptGitSessionApprovalAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -336,7 +334,7 @@ public class InteractiveChatLoop
                 var accepted = await _gitSessionService.AcceptSessionAsync(commitMessage, cancellationToken);
                 if (accepted)
                 {
-                    _console.MarkupLine($"[green]✓[/] Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged");
+                    _console.MarkupLine($"[green][/] Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged");
                 }
                 else
                 {
@@ -348,7 +346,7 @@ public class InteractiveChatLoop
                 var rejected = await _gitSessionService.RejectSessionAsync(cancellationToken);
                 if (rejected)
                 {
-                    _console.MarkupLine($"[green]✓[/] Session rejected: {session.ToolCallCommits.Count} changes discarded");
+                    _console.MarkupLine($"[green][/] Session rejected: {session.ToolCallCommits.Count} changes discarded");
                 }
                 else
                 {
