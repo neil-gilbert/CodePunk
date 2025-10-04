@@ -193,12 +193,27 @@ public class FileEditService : IFileEditService
         if (string.IsNullOrWhiteSpace(filePath))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path cannot be empty");
 
-        if (filePath.Contains("..") || filePath.StartsWith("/") || filePath.StartsWith("\\"))
+        // Reject path traversal attempts
+        if (filePath.Contains(".."))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path");
 
-        var fullPath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
-        var workspaceRoot = Directory.GetCurrentDirectory();
+        // Get workspace root and normalize for case-insensitive comparison
+        var workspaceRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
 
+        // Resolve full path (handles both relative and absolute paths)
+        string fullPath;
+        try
+        {
+            fullPath = Path.IsPathRooted(filePath)
+                ? Path.GetFullPath(filePath)
+                : Path.GetFullPath(filePath, workspaceRoot);
+        }
+        catch (Exception)
+        {
+            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path format");
+        }
+
+        // Ensure path is within workspace (case-insensitive on Windows/macOS)
         if (!fullPath.StartsWith(workspaceRoot, StringComparison.OrdinalIgnoreCase))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path outside workspace");
 
