@@ -62,7 +62,7 @@ public class InteractiveChatSession
         {
             if (!string.IsNullOrWhiteSpace(provider)) opts.DefaultProvider = provider.Trim();
             if (!string.IsNullOrWhiteSpace(model)) opts.DefaultModel = model.Trim();
-            // Propagate to LLM service so request construction respects user selection
+            
             try { _llmService.SetSessionDefaults(opts.DefaultProvider, opts.DefaultModel); } catch { }
             _logger.LogDebug("Chat defaults updated to provider={Provider} model={Model}", opts.DefaultProvider, opts.DefaultModel);
         }
@@ -119,7 +119,6 @@ public class InteractiveChatSession
         {
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
-            // Start git session if enabled and AutoStartSession is true
             await EnsureGitSessionStartedAsync(cancellationToken);
 
             var userMessage = Message.Create(
@@ -129,11 +128,9 @@ public class InteractiveChatSession
 
             await _messageService.CreateAsync(userMessage, cancellationToken).ConfigureAwait(false);
 
-            // Get conversation history for AI
             var messages = await _messageService.GetBySessionAsync(CurrentSession.Id, cancellationToken)
                 .ConfigureAwait(false);
 
-            // Process conversation with tool calling loop
             return await ProcessConversationAsync(messages.ToList(), cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -160,27 +157,22 @@ public class InteractiveChatSession
             _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
                 iteration, _options.MaxToolCallIterations);
                 
-            // Get AI response
             var (content, toolCalls) = await AIResponseProcessor.ProcessStreamingResponseAsync(
                 _llmService.SendMessageStreamAsync(currentMessages, cancellationToken), 
                 cancellationToken).ConfigureAwait(false);
 
-            // Create and save AI response
             var aiResponse = AIResponseProcessor.CreateAIMessage(
                 CurrentSession!.Id, content, toolCalls, _options.DefaultModel, _options.DefaultProvider);
                 
             await _messageService.CreateAsync(aiResponse, cancellationToken).ConfigureAwait(false);
             currentMessages.Add(aiResponse);
-            // NOTE: Non-streaming path currently lacks precise usage; could approximate here later if needed.
 
-            // If no tool calls, this is the final response
             if (toolCalls.Count == 0)
             {
                 finalResponse = aiResponse;
                 break;
             }
 
-            // Execute tool calls and create tool result message
             var (toolResultParts, userCancelled) = await ToolExecutionHelper.ExecuteToolCallsAsync(
                 toolCalls, _toolService, _logger, cancellationToken).ConfigureAwait(false);
 
@@ -188,11 +180,11 @@ public class InteractiveChatSession
             await _messageService.CreateAsync(toolResultMessage, cancellationToken).ConfigureAwait(false);
             currentMessages.Add(toolResultMessage);
 
-            // If user cancelled, stop the tool loop and return immediately
             if (userCancelled)
             {
                 _logger.LogInformation("User cancelled operation, stopping tool execution loop");
-                ToolIteration = 0; // reset after cancellation
+                ToolIteration = 0;
+                
                 return finalResponse ?? Message.Create(
                     CurrentSession.Id,
                     MessageRole.Assistant,
@@ -202,7 +194,6 @@ public class InteractiveChatSession
             }
         }
 
-        // Handle case where we hit max iterations without a final response
         if (finalResponse == null)
         {
             _logger.LogWarning("Tool calling loop exceeded maximum iterations ({MaxIterations}), creating fallback response", 
@@ -215,7 +206,8 @@ public class InteractiveChatSession
             finalResponse = fallbackMessage;
         }
 
-    ToolIteration = 0; // reset after loop completes
+    ToolIteration = 0; 
+
     _logger.LogInformation("Received final AI response for session {SessionId}", CurrentSession!.Id);
         return finalResponse;
     }
@@ -233,13 +225,12 @@ public class InteractiveChatSession
         IsProcessing = true;
         _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.MessageStart, CurrentSession!.Id));
 
-        await Task.Yield(); // allow observers to see IsProcessing=true before streaming work
-
+        await Task.Yield();
+        
         try
         {
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);
 
-            // Start git session if enabled and AutoStartSession is true
             await EnsureGitSessionStartedAsync(cancellationToken);
 
             var userMessage = Message.Create(
@@ -292,7 +283,6 @@ public class InteractiveChatSession
 
             await foreach (var chunk in _llmService.SendMessageStreamAsync(currentMessages, cancellationToken))
             {
-                // Track model and provider from first chunk
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
                     model = _options.DefaultModel;
@@ -309,7 +299,6 @@ public class InteractiveChatSession
                     toolCalls.Add(new ToolCallPart(chunk.ToolCall.Id, chunk.ToolCall.Name, chunk.ToolCall.Arguments));
                 }
 
-                // Stream the content to the caller in real-time (preserve original IsComplete)
                 var compatibleChunk = new ChatStreamChunk
                 {
                     ContentDelta = chunk.Content,
@@ -329,12 +318,10 @@ public class InteractiveChatSession
 
                 if (chunk.IsComplete && chunk.Usage != null)
                 {
-                    // Update accumulated session usage
                     AccumulatedPromptTokens += chunk.Usage.InputTokens;
                     AccumulatedCompletionTokens += chunk.Usage.OutputTokens;
                     AccumulatedCost += chunk.Usage.EstimatedCost;
 
-                    // Persist to session if available
                     if (CurrentSession != null)
                     {
                         CurrentSession = CurrentSession with
@@ -349,26 +336,23 @@ public class InteractiveChatSession
                 }
             }
 
-            // Create and save AI response
             var aiResponse = AIResponseProcessor.CreateAIMessage(
                 CurrentSession!.Id, responseContent.ToString(), toolCalls, model, provider);
                 
             await _messageService.CreateAsync(aiResponse, cancellationToken).ConfigureAwait(false);
             currentMessages.Add(aiResponse);
 
-            // If no tool calls, this is the final response
             if (toolCalls.Count == 0)
             {
-                ToolIteration = 0; // final response reached
+                ToolIteration = 0;
+                
                 _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationEnd, CurrentSession!.Id, iteration));
                 yield break;
             }
 
-            // Execute tool calls with streaming status updates
             var (toolResultParts, statusMessages, userCancelled) = await ToolExecutionHelper.ExecuteToolCallsWithStatusAsync(
                 toolCalls, _toolService, _logger, cancellationToken).ConfigureAwait(false);
 
-            // Stream tool execution status messages
             foreach (var statusMessage in statusMessages)
             {
                 yield return new ChatStreamChunk
@@ -379,19 +363,17 @@ public class InteractiveChatSession
                     IsComplete = false
                 };
             }
-
-            // Create and save tool results message
+            
             var toolResultMessage = AIResponseProcessor.CreateToolResultsMessage(CurrentSession.Id, toolResultParts);
             await _messageService.CreateAsync(toolResultMessage, cancellationToken).ConfigureAwait(false);
 
             currentMessages.Add(toolResultMessage);
 
-            // If user cancelled, stop the tool loop and return immediately
             if (userCancelled)
             {
                 _logger.LogInformation("User cancelled operation, stopping streaming tool execution loop");
-                ToolIteration = 0; // reset after cancellation
-
+                ToolIteration = 0;
+                
                 yield return new ChatStreamChunk
                 {
                     ContentDelta = "Operation cancelled by user.",
@@ -407,7 +389,6 @@ public class InteractiveChatSession
             _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationEnd, CurrentSession!.Id, iteration));
         }
 
-        // Handle case where we hit max iterations without a final response
     if (iteration >= _options.MaxToolCallIterations)
         {
             _logger.LogWarning("Tool calling loop exceeded maximum iterations ({MaxIterations}), creating fallback response", 
@@ -418,7 +399,6 @@ public class InteractiveChatSession
             
             await _messageService.CreateAsync(fallbackMessage, cancellationToken).ConfigureAwait(false);
             
-            // Stream the fallback message
             yield return new ChatStreamChunk
             {
                 ContentDelta = fallbackMessage.Parts.OfType<TextPart>().FirstOrDefault()?.Content ?? "",
