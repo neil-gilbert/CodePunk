@@ -32,7 +32,6 @@ public class FileEditService : IFileEditService
     {
         try
         {
-            // Validate file path
             var validation = ValidateFilePath(request.FilePath);
             if (!validation.IsValid)
             {
@@ -42,7 +41,6 @@ public class FileEditService : IFileEditService
             var fullPath = Path.GetFullPath(request.FilePath, Directory.GetCurrentDirectory());
             var fileExists = File.Exists(fullPath);
 
-            // Validate file for editing
             if (fileExists)
             {
                 var fileValidation = await ValidateFileForEdit(fullPath, cancellationToken);
@@ -52,16 +50,13 @@ public class FileEditService : IFileEditService
                 }
             }
 
-            // Read existing content
             var originalContent = fileExists ? await File.ReadAllTextAsync(fullPath, cancellationToken) : string.Empty;
             var normalizedOriginal = NormalizeLineEndings(originalContent);
             var normalizedNew = NormalizeLineEndings(request.Content);
 
-            // Generate diff and stats
             var diff = _diffService.CreateUnifiedDiff(request.FilePath, normalizedOriginal, normalizedNew);
             var stats = _diffService.ComputeStats(normalizedOriginal, normalizedNew, normalizedNew);
 
-            // Handle approval if required
             if (request.RequireApproval && !string.IsNullOrEmpty(diff))
             {
                 var approvalResult = await _approvalService.RequestApprovalAsync(
@@ -71,8 +66,7 @@ public class FileEditService : IFileEditService
                 {
                     return new FileEditResult(false, "USER_CANCELLED", "User cancelled the operation");
                 }
-
-                // Use modified content if provided
+                
                 if (!string.IsNullOrEmpty(approvalResult.ModifiedContent))
                 {
                     normalizedNew = NormalizeLineEndings(approvalResult.ModifiedContent);
@@ -81,10 +75,8 @@ public class FileEditService : IFileEditService
                 }
             }
 
-            // Perform atomic write
             await AtomicWriteAsync(fullPath, normalizedNew, cancellationToken);
 
-            // Calculate token savings estimate
             var tokensSaved = CalculateTokensSaved(normalizedOriginal.Length, normalizedNew.Length, diff.Length);
 
             _logger.LogInformation("File written successfully: {FilePath}, Lines: +{Added}/-{Removed}",
@@ -106,7 +98,6 @@ public class FileEditService : IFileEditService
     {
         try
         {
-            // Validate file path
             var validation = ValidateFilePath(request.FilePath);
             if (!validation.IsValid)
             {
@@ -120,18 +111,15 @@ public class FileEditService : IFileEditService
                 return new FileEditResult(false, FileEditErrorCodes.FileNotFound, $"File not found: {request.FilePath}");
             }
 
-            // Validate file for editing
             var fileValidation = await ValidateFileForEdit(fullPath, cancellationToken);
             if (!fileValidation.IsValid)
             {
                 return new FileEditResult(false, fileValidation.ErrorCode, fileValidation.ErrorMessage);
             }
-
-            // Read and normalize content
+            
             var originalContent = await File.ReadAllTextAsync(fullPath, cancellationToken);
             var normalizedContent = NormalizeLineEndings(originalContent);
 
-            // Count occurrences
             var occurrences = CountOccurrences(normalizedContent, request.OldString);
 
             if (occurrences == 0)
@@ -146,7 +134,6 @@ public class FileEditService : IFileEditService
                     $"Expected {request.ExpectedOccurrences} occurrences, found {occurrences}");
             }
 
-            // Apply replacement
             var newContent = normalizedContent.Replace(request.OldString, request.NewString);
 
             if (string.Equals(normalizedContent, newContent, StringComparison.Ordinal))
@@ -154,11 +141,9 @@ public class FileEditService : IFileEditService
                 return new FileEditResult(false, FileEditErrorCodes.NoChange, "No changes made to file");
             }
 
-            // Generate diff and stats
             var diff = _diffService.CreateUnifiedDiff(request.FilePath, normalizedContent, newContent);
             var stats = _diffService.ComputeStats(normalizedContent, newContent, newContent);
 
-            // Handle approval if required
             if (request.RequireApproval)
             {
                 var approvalResult = await _approvalService.RequestApprovalAsync(
@@ -170,7 +155,6 @@ public class FileEditService : IFileEditService
                 }
             }
 
-            // Perform atomic write
             await AtomicWriteAsync(fullPath, newContent, cancellationToken);
 
             var tokensSaved = CalculateTokensSaved(normalizedContent.Length, newContent.Length,
@@ -193,14 +177,11 @@ public class FileEditService : IFileEditService
         if (string.IsNullOrWhiteSpace(filePath))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path cannot be empty");
 
-        // Reject path traversal attempts
         if (filePath.Contains(".."))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path");
 
-        // Get workspace root and normalize for case-insensitive comparison
         var workspaceRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
 
-        // Resolve full path (handles both relative and absolute paths)
         string fullPath;
         try
         {
@@ -213,7 +194,6 @@ public class FileEditService : IFileEditService
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path format");
         }
 
-        // Ensure path is within workspace (case-insensitive on Windows/macOS)
         if (!fullPath.StartsWith(workspaceRoot, StringComparison.OrdinalIgnoreCase))
             return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path outside workspace");
 
@@ -224,7 +204,6 @@ public class FileEditService : IFileEditService
     {
         var fileInfo = new FileInfo(fullPath);
 
-        // Check file size (default 5MB limit)
         var maxFileSize = GetEnvInt("CODEPUNK_MAX_FILE_SIZE", 5_000_000);
         if (fileInfo.Length > maxFileSize)
         {
@@ -232,7 +211,6 @@ public class FileEditService : IFileEditService
                 $"File too large ({fileInfo.Length} bytes > {maxFileSize} bytes)");
         }
 
-        // Check if binary file
         if (await IsBinaryFile(fullPath, cancellationToken))
         {
             return ValidationResult.Error(FileEditErrorCodes.BinaryFile, "File appears to be binary");
@@ -249,7 +227,7 @@ public class FileEditService : IFileEditService
 
         for (int i = 0; i < bytesRead; i++)
         {
-            if (buffer[i] == 0) return true; // NULL byte indicates binary
+            if (buffer[i] == 0) return true;
         }
 
         return false;
@@ -299,7 +277,6 @@ public class FileEditService : IFileEditService
 
     private static int CalculateTokensSaved(int originalLength, int newLength, int operationCost)
     {
-        // Rough estimate: 4 characters per token
         var fullContentTokens = (originalLength + newLength) / 4;
         var operationTokens = operationCost / 4;
         var saved = fullContentTokens - operationTokens;
