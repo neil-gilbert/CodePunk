@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Tools;
 using FluentAssertions;
 using Xunit;
@@ -6,22 +7,17 @@ using Xunit;
 namespace CodePunk.ComponentTests;
 
 [Collection("Sequential")]
-public class ListDirectoryToolTests : IDisposable
+public class ListDirectoryToolTests : WorkspaceTestBase
 {
-    private readonly string _testWorkspace;
-
-    public ListDirectoryToolTests()
+    public ListDirectoryToolTests() : base("listdir_test")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_listdir_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
     }
 
     [Fact]
     public async Task ListDirectory_EmptyDirectory_ReturnsEmptyList()
     {
         var tool = new ListDirectoryTool();
-        var emptyDir = Path.Combine(_testWorkspace, "empty");
+        var emptyDir = Path.Combine(TestWorkspace, "empty");
         Directory.CreateDirectory(emptyDir);
 
         var arguments = JsonDocument.Parse($@"{{
@@ -38,7 +34,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_WithFiles_ReturnsFileList()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "files");
+        var testDir = Path.Combine(TestWorkspace, "files");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(Path.Combine(testDir, "file1.txt"), "content1");
         await File.WriteAllTextAsync(Path.Combine(testDir, "file2.txt"), "content2");
@@ -59,7 +55,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_WithDirectories_ListsDirectoriesFirst()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "mixed");
+        var testDir = Path.Combine(TestWorkspace, "mixed");
         Directory.CreateDirectory(testDir);
         Directory.CreateDirectory(Path.Combine(testDir, "subdir1"));
         Directory.CreateDirectory(Path.Combine(testDir, "subdir2"));
@@ -86,7 +82,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_WithIgnorePattern_FiltersMatchingEntries()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "ignore");
+        var testDir = Path.Combine(TestWorkspace, "ignore");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(Path.Combine(testDir, "keep.txt"), "keep");
         await File.WriteAllTextAsync(Path.Combine(testDir, "ignore.log"), "ignore");
@@ -110,7 +106,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_WithMultipleIgnorePatterns_FiltersAll()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "multiignore");
+        var testDir = Path.Combine(TestWorkspace, "multiignore");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(Path.Combine(testDir, "keep.txt"), "keep");
         await File.WriteAllTextAsync(Path.Combine(testDir, "temp.log"), "temp");
@@ -134,7 +130,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_ShowsFileSizes()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "sizes");
+        var testDir = Path.Combine(TestWorkspace, "sizes");
         Directory.CreateDirectory(testDir);
         var content = new string('A', 1024);
         await File.WriteAllTextAsync(Path.Combine(testDir, "1kb.txt"), content);
@@ -154,7 +150,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_ShowsModifiedTime()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "times");
+        var testDir = Path.Combine(TestWorkspace, "times");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(Path.Combine(testDir, "dated.txt"), "content");
 
@@ -173,7 +169,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_NonExistentDirectory_ReturnsError()
     {
         var tool = new ListDirectoryTool();
-        var nonExistent = Path.Combine(_testWorkspace, "doesnotexist");
+        var nonExistent = Path.Combine(TestWorkspace, "doesnotexist");
 
         var arguments = JsonDocument.Parse($@"{{
             ""path"": ""{nonExistent.Replace("\\", "\\\\")}""
@@ -204,7 +200,7 @@ public class ListDirectoryToolTests : IDisposable
     public async Task ListDirectory_SortedAlphabetically_WithinTypes()
     {
         var tool = new ListDirectoryTool();
-        var testDir = Path.Combine(_testWorkspace, "sorted");
+        var testDir = Path.Combine(TestWorkspace, "sorted");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(Path.Combine(testDir, "zebra.txt"), "z");
         await File.WriteAllTextAsync(Path.Combine(testDir, "alpha.txt"), "a");
@@ -223,11 +219,4 @@ public class ListDirectoryToolTests : IDisposable
         lines[2].Should().Contain("zebra.txt");
     }
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
-    }
 }

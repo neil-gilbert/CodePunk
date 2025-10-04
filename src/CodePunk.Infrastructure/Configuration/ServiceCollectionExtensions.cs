@@ -5,6 +5,8 @@ using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
 using CodePunk.Core.Providers.Anthropic;
 using CodePunk.Core.Chat;
+using CodePunk.Core.Git;
+using CodePunk.Core.GitSession;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -50,7 +52,33 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptProvider, PromptProvider>();
 
         services.AddScoped<ILLMService, LLMService>();
-        services.AddScoped<IToolService, ToolService>();
+
+        var gitSessionOptions = configuration?.GetSection("GitSession").Get<GitSessionOptions>();
+        var gitSessionEnabled = gitSessionOptions?.Enabled ?? false;
+
+        // Only enable Git session if explicitly configured AND enabled
+        if (configuration != null && gitSessionEnabled)
+        {
+            services.Configure<GitSessionOptions>(configuration.GetSection("GitSession"));
+            services.AddSingleton<IWorkingDirectoryProvider, DefaultWorkingDirectoryProvider>();
+            services.AddSingleton<IGitCommandExecutor, GitCommandExecutor>();
+            services.AddSingleton<IGitSessionStateStore, GitSessionStateStore>();
+            services.AddScoped<IGitSessionService, GitSessionService>();
+            services.AddHostedService<GitSessionCleanupService>();
+
+            services.AddScoped<ToolService>();
+            services.AddScoped<IToolService>(sp =>
+            {
+                var toolService = sp.GetRequiredService<ToolService>();
+                var gitSessionService = sp.GetRequiredService<IGitSessionService>();
+                var logger = sp.GetRequiredService<ILogger<GitSessionToolInterceptor>>();
+                return new GitSessionToolInterceptor(toolService, gitSessionService, logger);
+            });
+        }
+        else
+        {
+            services.AddScoped<IToolService, ToolService>();
+        }
 
         services.AddScoped<InteractiveChatSession>();
 

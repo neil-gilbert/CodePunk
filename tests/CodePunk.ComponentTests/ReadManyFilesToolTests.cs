@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Tools;
 using FluentAssertions;
 using Xunit;
@@ -6,23 +7,19 @@ using Xunit;
 namespace CodePunk.ComponentTests;
 
 [Collection("Sequential")]
-public class ReadManyFilesToolTests : IDisposable
+public class ReadManyFilesToolTests : WorkspaceTestBase
 {
-    private readonly string _testWorkspace;
 
-    public ReadManyFilesToolTests()
+    public ReadManyFilesToolTests() : base("read_many_files")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_readmany_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
     }
 
     [Fact]
     public async Task ReadManyFiles_ExplicitPaths_ReadsAllFiles()
     {
         var tool = new ReadManyFilesTool();
-        var file1 = Path.Combine(_testWorkspace, "file1.txt");
-        var file2 = Path.Combine(_testWorkspace, "file2.txt");
+        var file1 = Path.Combine(TestWorkspace, "file1.txt");
+        var file2 = Path.Combine(TestWorkspace, "file2.txt");
         await File.WriteAllTextAsync(file1, "Content 1");
         await File.WriteAllTextAsync(file2, "Content 2");
 
@@ -44,11 +41,11 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_GlobPattern_ReadsMatchingFiles()
     {
         var tool = new ReadManyFilesTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "test1.txt"), "Test 1");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "test2.txt"), "Test 2");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "other.log"), "Other");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "test1.txt"), "Test 1");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "test2.txt"), "Test 2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "other.log"), "Other");
 
-        var pattern = Path.Combine(_testWorkspace, "*.txt");
+        var pattern = Path.Combine(TestWorkspace, "*.txt");
         var arguments = JsonDocument.Parse($@"{{
             ""paths"": [""{pattern.Replace("\\", "\\\\")}""]
         }}").RootElement;
@@ -66,16 +63,16 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_RecursivePattern_ReadsNestedFiles()
     {
         var tool = new ReadManyFilesTool();
-        var subdir = Path.Combine(_testWorkspace, "src");
+        var subdir = Path.Combine(TestWorkspace, "src");
         Directory.CreateDirectory(subdir);
         var nested = Path.Combine(subdir, "nested");
         Directory.CreateDirectory(nested);
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "root.cs"), "Root");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "root.cs"), "Root");
         await File.WriteAllTextAsync(Path.Combine(subdir, "file1.cs"), "File1");
         await File.WriteAllTextAsync(Path.Combine(nested, "file2.cs"), "File2");
 
-        var pattern = Path.Combine(_testWorkspace, "**/*.cs");
+        var pattern = Path.Combine(TestWorkspace, "**/*.cs");
         var arguments = JsonDocument.Parse($@"{{
             ""paths"": [""{pattern.Replace("\\", "\\\\")}""]
         }}").RootElement;
@@ -93,9 +90,9 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_WithExcludePattern_FiltersFiles()
     {
         var tool = new ReadManyFilesTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "keep.txt"), "Keep");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "exclude.txt"), "Exclude");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "exclude2.txt"), "Exclude2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "keep.txt"), "Keep");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "exclude.txt"), "Exclude");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "exclude2.txt"), "Exclude2");
 
         var arguments = JsonDocument.Parse(@"{
             ""paths"": [""*.txt""],
@@ -114,12 +111,12 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_MixedPathsAndPatterns_ReadsAll()
     {
         var tool = new ReadManyFilesTool();
-        var explicitFile = Path.Combine(_testWorkspace, "explicit.txt");
+        var explicitFile = Path.Combine(TestWorkspace, "explicit.txt");
         await File.WriteAllTextAsync(explicitFile, "Explicit");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "pattern1.log"), "Pattern1");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "pattern2.log"), "Pattern2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "pattern1.log"), "Pattern1");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "pattern2.log"), "Pattern2");
 
-        var pattern = Path.Combine(_testWorkspace, "*.log");
+        var pattern = Path.Combine(TestWorkspace, "*.log");
         var arguments = JsonDocument.Parse($@"{{
             ""paths"": [""{explicitFile.Replace("\\", "\\\\")}"", ""{pattern.Replace("\\", "\\\\")}""]
         }}").RootElement;
@@ -137,8 +134,8 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_NonExistentFile_ReportsFailure()
     {
         var tool = new ReadManyFilesTool();
-        var goodFile = Path.Combine(_testWorkspace, "good.txt");
-        var badFile = Path.Combine(_testWorkspace, "bad.txt");
+        var goodFile = Path.Combine(TestWorkspace, "good.txt");
+        var badFile = Path.Combine(TestWorkspace, "bad.txt");
         await File.WriteAllTextAsync(goodFile, "Good");
 
         var arguments = JsonDocument.Parse($@"{{
@@ -189,10 +186,10 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_ShowsEndOfContentSeparator()
     {
         var tool = new ReadManyFilesTool();
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "Content 1");
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file2.txt"), "Content 2");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file1.txt"), "Content 1");
+        await File.WriteAllTextAsync(Path.Combine(TestWorkspace, "file2.txt"), "Content 2");
 
-        var pattern = Path.Combine(_testWorkspace, "*.txt");
+        var pattern = Path.Combine(TestWorkspace, "*.txt");
         var arguments = JsonDocument.Parse($@"{{
             ""paths"": [""{pattern.Replace("\\", "\\\\")}""]
         }}").RootElement;
@@ -209,7 +206,7 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_DirectoryPath_ReadsAllFilesInDirectory()
     {
         var tool = new ReadManyFilesTool();
-        var subdir = Path.Combine(_testWorkspace, "mydir");
+        var subdir = Path.Combine(TestWorkspace, "mydir");
         Directory.CreateDirectory(subdir);
         await File.WriteAllTextAsync(Path.Combine(subdir, "file1.txt"), "File1");
         await File.WriteAllTextAsync(Path.Combine(subdir, "file2.txt"), "File2");
@@ -230,11 +227,11 @@ public class ReadManyFilesToolTests : IDisposable
     public async Task ReadManyFiles_ShowsRelativePaths()
     {
         var tool = new ReadManyFilesTool();
-        var subdir = Path.Combine(_testWorkspace, "sub");
+        var subdir = Path.Combine(TestWorkspace, "sub");
         Directory.CreateDirectory(subdir);
         await File.WriteAllTextAsync(Path.Combine(subdir, "nested.txt"), "Nested");
 
-        var pattern = Path.Combine(_testWorkspace, "**/*.txt");
+        var pattern = Path.Combine(TestWorkspace, "**/*.txt");
         var arguments = JsonDocument.Parse($@"{{
             ""paths"": [""{pattern.Replace("\\", "\\\\")}""]
         }}").RootElement;
@@ -244,13 +241,5 @@ public class ReadManyFilesToolTests : IDisposable
         result.IsError.Should().BeFalse();
         result.Content.Should().Contain("sub");
         result.Content.Should().Contain("nested.txt");
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
     }
 }

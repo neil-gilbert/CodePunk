@@ -16,17 +16,12 @@ namespace CodePunk.ComponentTests;
 /// End-to-end behavioral tests for tools - verifying that what AI "wants to do" actually happens
 /// These test the outer boundary: AI tool calls → file system changes
 /// </summary>
-public class ToolBehaviorTests : IDisposable
+public class ToolBehaviorTests : WorkspaceTestBase
 {
     private readonly ServiceProvider _serviceProvider;
-    private readonly string _testWorkspace;
 
-    public ToolBehaviorTests()
+    public ToolBehaviorTests() : base("tool_behavior")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
-
         var services = new ServiceCollection();
         ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider();
@@ -223,12 +218,9 @@ public class ToolBehaviorTests : IDisposable
         return _serviceProvider.GetRequiredService<TestApprovalService>();
     }
 
-    public void Dispose()
+    public override void Dispose()
     {
         _serviceProvider?.Dispose();
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
+        base.Dispose();
     }
 }

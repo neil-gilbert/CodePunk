@@ -101,6 +101,7 @@ public class Phase3DeveloperTests
             mockLLMService.Object,
             mockToolService.Object,
             NullLogger<InteractiveChatSession>.Instance,
+            null,
             new ChatSessionEventStream());
     }
 }

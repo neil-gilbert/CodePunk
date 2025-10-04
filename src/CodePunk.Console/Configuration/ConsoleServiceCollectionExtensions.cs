@@ -46,8 +46,11 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, SetupCommand>();
         services.AddTransient<ChatCommand, ReloadCommand>();
         services.AddTransient<ChatCommand, ProvidersCommand>();
+        services.AddTransient<ChatCommand, AcceptSessionCommand>();
+        services.AddTransient<ChatCommand, RejectSessionCommand>();
+        services.AddTransient<ChatCommand, SessionStatusCommand>();
         services.AddSingleton<CommandProcessor>();
-        
+
         return services;
     }
 }

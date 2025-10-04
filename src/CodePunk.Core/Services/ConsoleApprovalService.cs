@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.GitSession;
 using CodePunk.Core.Models.FileEdit;
 using Spectre.Console;
 using System.Text.RegularExpressions;
@@ -9,11 +10,15 @@ namespace CodePunk.Core.Services;
 public class ConsoleApprovalService : IApprovalService
 {
     private readonly ILogger<ConsoleApprovalService> _logger;
+    private readonly IGitSessionService? _gitSessionService;
     private bool _autoApproveSession = false;
 
-    public ConsoleApprovalService(ILogger<ConsoleApprovalService> logger)
+    public ConsoleApprovalService(
+        ILogger<ConsoleApprovalService> logger,
+        IGitSessionService? gitSessionService = null)
     {
         _logger = logger;
+        _gitSessionService = gitSessionService;
     }
 
     public async Task<ApprovalResult> RequestApprovalAsync(
@@ -24,6 +29,27 @@ public class ConsoleApprovalService : IApprovalService
     {
         try
         {
+            // Check if git session is active - if so, auto-approve with preview
+            if (_gitSessionService != null)
+            {
+                var gitSession = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
+                if (gitSession != null)
+                {
+                    _logger.LogInformation("Auto-approving file edit (git session active): {FilePath}", request.FilePath);
+
+                    // Show condensed preview
+                    AnsiConsole.MarkupLine($"[dim]→[/] [yellow]{request.FilePath}[/] [dim]+{stats.LinesAdded}/-{stats.LinesRemoved} lines[/]");
+
+                    if (!string.IsNullOrEmpty(diff))
+                    {
+                        var diffSections = ParseDiffIntoSections(diff);
+                        DisplayCondensedPreview(diffSections, request, stats);
+                    }
+
+                    return new ApprovalResult(true);
+                }
+            }
+
             if (_autoApproveSession)
             {
                 _logger.LogInformation("Auto-approving file edit (session auto-approval enabled): {FilePath}", request.FilePath);
@@ -306,6 +332,50 @@ public class ConsoleApprovalService : IApprovalService
         _logger.LogInformation("User enabled auto-approval for session and approved file edit: {FilePath}", filePath);
         AnsiConsole.MarkupLine("[green]✓[/] Enabled auto-approval for this session. All future changes will be automatically approved.");
         return new ApprovalResult(true);
+    }
+
+    private static void DisplayCondensedPreview(List<DiffSection> sections, FileEditRequest request, DiffStats stats)
+    {
+        const int maxPreviewLines = 5;
+
+        var mergedSections = MergeAdjacentSections(sections);
+        var section = mergedSections.FirstOrDefault();
+
+        if (section == null) return;
+
+        var filteredLines = GetLinesWithContext(section.Lines, 1);
+        var changeLines = filteredLines.Where(l => l.Type != DiffLineType.Context).Take(maxPreviewLines).ToList();
+
+        if (!changeLines.Any()) return;
+
+        var previewLines = new List<string>();
+        foreach (var line in changeLines)
+        {
+            var content = TruncateLine(line.Content, 80);
+            switch (line.Type)
+            {
+                case DiffLineType.Deletion:
+                    previewLines.Add($"[indianred]  - {Markup.Escape(content)}[/]");
+                    break;
+                case DiffLineType.Addition:
+                    previewLines.Add($"[cadetblue]  + {Markup.Escape(content)}[/]");
+                    break;
+            }
+        }
+
+        if (previewLines.Count > 0)
+        {
+            foreach (var line in previewLines)
+            {
+                AnsiConsole.MarkupLine(line);
+            }
+
+            if (filteredLines.Count(l => l.Type != DiffLineType.Context) > maxPreviewLines)
+            {
+                var remaining = filteredLines.Count(l => l.Type != DiffLineType.Context) - maxPreviewLines;
+                AnsiConsole.MarkupLine($"[dim]  ... and {remaining} more changes[/]");
+            }
+        }
     }
 
 }

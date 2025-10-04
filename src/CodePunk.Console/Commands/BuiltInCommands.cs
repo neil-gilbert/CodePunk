@@ -33,6 +33,7 @@ public class HelpCommand : ChatCommand
 
         var commands = new[]
         {
+            ("/accept-session", new[] { "/accept" }, "Accept and commit all AI changes from the current session"),
             ("/clear", new[] { "/cls" }, "Clear the console screen"),
             ("/help", new[] { "/h", "/?" }, "Shows available commands and their usage"),
             ("/load", new[] { "/l" }, "Load a previous chat session"),
@@ -43,6 +44,8 @@ public class HelpCommand : ChatCommand
             ("/new", new[] { "/n" }, "Start a new chat session"),
             ("/plan", Array.Empty<string>(), "Manage change plans: create | add | diff | apply | generate --ai"),
             ("/quit", new[] { "/q", "/exit" }, "Exit the application"),
+            ("/reject-session", new[] { "/reject" }, "Reject and discard all AI changes from the current session"),
+            ("/session-status", new[] { "/session", "/git-status" }, "Show current git session status and commits"),
             ("/sessions", new[] { "/s", "/list" }, "Show recent chat sessions"),
             ("/usage", new[] { "/tokens" }, "Show accumulated token usage & estimated cost for current session"),
             ("/use", new[] { "/u" }, "Set default provider and/or model")

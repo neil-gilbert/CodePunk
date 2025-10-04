@@ -1,7 +1,7 @@
+using System.Text.Json;
 using CodePunk.ComponentTests.TestHelpers;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
-using CodePunk.Core.Models;
 using CodePunk.Core.Models.FileEdit;
 using CodePunk.Core.Services;
 using FluentAssertions;
@@ -17,18 +17,13 @@ namespace CodePunk.ComponentTests;
 /// Simple component tests that verify core behaviors work end-to-end
 /// These tests focus on user-visible outcomes rather than implementation details
 /// </summary>
-public class SimpleWorkflowTests : IDisposable
+public class SimpleWorkflowTests : WorkspaceTestBase
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly Mock<ILLMService> _mockLLMService;
-    private readonly string _testWorkspace;
 
-    public SimpleWorkflowTests()
+    public SimpleWorkflowTests() : base("test")
     {
-        _testWorkspace = Path.Combine(Path.GetTempPath(), $"codepunk_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testWorkspace);
-        Environment.CurrentDirectory = _testWorkspace;
-
         _mockLLMService = new Mock<ILLMService>();
 
         var services = new ServiceCollection();
@@ -158,13 +153,10 @@ public class SimpleWorkflowTests : IDisposable
         services.AddSingleton<ILogger<DiffService>>(provider => NullLogger<DiffService>.Instance);
     }
 
-    public void Dispose()
+    public override void Dispose()
     {
         _serviceProvider?.Dispose();
-        if (Directory.Exists(_testWorkspace))
-        {
-            Directory.Delete(_testWorkspace, recursive: true);
-        }
+        base.Dispose();
     }
 }
 

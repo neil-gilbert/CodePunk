@@ -2,6 +2,7 @@ using System.Text;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using CodePunk.Core.Chat;
+using CodePunk.Core.GitSession;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 
@@ -16,6 +17,7 @@ public class InteractiveChatLoop
     private readonly CommandProcessor _commandProcessor;
     private readonly StreamingResponseRenderer _renderer;
     private readonly IAnsiConsole _console;
+    private readonly IGitSessionService? _gitSessionService;
     private readonly ILogger<InteractiveChatLoop> _logger;
 
     private bool _shouldExit;
@@ -26,12 +28,14 @@ public class InteractiveChatLoop
         CommandProcessor commandProcessor,
         StreamingResponseRenderer renderer,
         IAnsiConsole console,
-        ILogger<InteractiveChatLoop> logger)
+        ILogger<InteractiveChatLoop> logger,
+        IGitSessionService? gitSessionService = null)
     {
         _chatSession = chatSession;
         _commandProcessor = commandProcessor;
         _renderer = renderer;
         _console = console;
+        _gitSessionService = gitSessionService;
         _logger = logger;
     }
 
@@ -53,6 +57,10 @@ public class InteractiveChatLoop
             if (!string.IsNullOrEmpty(chunk.ContentDelta)) sb.Append(chunk.ContentDelta);
         }
         _renderer.CompleteStreaming();
+
+        // Check for active git session and prompt for accept/reject
+        await PromptGitSessionApprovalAsync(cancellationToken);
+
         return sb.ToString();
     }
 
@@ -286,6 +294,9 @@ public class InteractiveChatLoop
             }
 
             _renderer.CompleteStreaming();
+
+            // Check for active git session and prompt for accept/reject
+            await PromptGitSessionApprovalAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -293,5 +304,64 @@ public class InteractiveChatLoop
             _console.MarkupLine($"[red]Error: {ex.Message}[/]");
             _console.WriteLine();
         }
+    }
+
+    /// <summary>
+    /// Prompts user to accept or reject git session changes if there's an active session
+    /// </summary>
+    private async Task PromptGitSessionApprovalAsync(CancellationToken cancellationToken)
+    {
+        if (_gitSessionService == null) return;
+
+        var session = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
+        if (session == null || session.ToolCallCommits.Count == 0) return;
+
+        _console.WriteLine();
+        _console.MarkupLine($"[yellow]Git Session:[/] {session.ToolCallCommits.Count} file changes detected");
+        _console.MarkupLine($"[dim]Shadow branch: {session.ShadowBranch}[/]");
+
+        var choice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[yellow]What would you like to do with these changes?[/]")
+                .AddChoices(new[] {
+                    "Accept and commit all changes",
+                    "Reject and discard all changes",
+                    "Review changes first"
+                }));
+
+        switch (choice)
+        {
+            case "Accept and commit all changes":
+                var commitMessage = $"AI Session: Applied {session.ToolCallCommits.Count} changes";
+                var accepted = await _gitSessionService.AcceptSessionAsync(commitMessage, cancellationToken);
+                if (accepted)
+                {
+                    _console.MarkupLine($"[green]✓[/] Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged");
+                }
+                else
+                {
+                    _console.MarkupLine("[red]Failed to accept session. Check logs for details.[/]");
+                }
+                break;
+
+            case "Reject and discard all changes":
+                var rejected = await _gitSessionService.RejectSessionAsync(cancellationToken);
+                if (rejected)
+                {
+                    _console.MarkupLine($"[green]✓[/] Session rejected: {session.ToolCallCommits.Count} changes discarded");
+                }
+                else
+                {
+                    _console.MarkupLine("[red]Failed to reject session. Check logs for details.[/]");
+                }
+                break;
+
+            case "Review changes first":
+                _console.MarkupLine($"[dim]Use /session-status to review changes[/]");
+                _console.MarkupLine($"[dim]Use /accept-session to accept or /reject-session to discard[/]");
+                break;
+        }
+
+        _console.WriteLine();
     }
 }

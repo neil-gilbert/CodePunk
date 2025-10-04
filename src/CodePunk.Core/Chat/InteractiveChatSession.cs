@@ -1,5 +1,6 @@
 using System.Text;
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.GitSession;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,7 @@ public class InteractiveChatSession
     private readonly IMessageService _messageService;
     private readonly ILLMService _llmService;
     private readonly IToolService _toolService;
+    private readonly IGitSessionService? _gitSessionService;
     private readonly ILogger<InteractiveChatSession> _logger;
     private readonly IChatSessionEventStream _eventStream;
     private readonly IChatSessionOptions _options;
@@ -37,6 +39,7 @@ public class InteractiveChatSession
         ILLMService llmService,
         IToolService toolService,
         ILogger<InteractiveChatSession> logger,
+        IGitSessionService? gitSessionService = null,
         IChatSessionEventStream? eventStream = null,
         IChatSessionOptions? options = null)
     {
@@ -44,6 +47,7 @@ public class InteractiveChatSession
         _messageService = messageService;
         _llmService = llmService;
         _toolService = toolService;
+        _gitSessionService = gitSessionService;
         _logger = logger;
         _eventStream = eventStream ?? new ChatSessionEventStream();
         _options = options ?? new ChatSessionOptions();
@@ -115,6 +119,9 @@ public class InteractiveChatSession
         {
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
+            // Start git session if enabled and AutoStartSession is true
+            await EnsureGitSessionStartedAsync(cancellationToken);
+
             var userMessage = Message.Create(
                 CurrentSession.Id,
                 MessageRole.User,
@@ -125,7 +132,7 @@ public class InteractiveChatSession
             // Get conversation history for AI
             var messages = await _messageService.GetBySessionAsync(CurrentSession.Id, cancellationToken)
                 .ConfigureAwait(false);
-            
+
             // Process conversation with tool calling loop
             return await ProcessConversationAsync(messages.ToList(), cancellationToken).ConfigureAwait(false);
         }
@@ -232,6 +239,9 @@ public class InteractiveChatSession
         {
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);
 
+            // Start git session if enabled and AutoStartSession is true
+            await EnsureGitSessionStartedAsync(cancellationToken);
+
             var userMessage = Message.Create(
                 CurrentSession.Id,
                 MessageRole.User,
@@ -239,7 +249,7 @@ public class InteractiveChatSession
 
             await _messageService.CreateAsync(userMessage, cancellationToken).ConfigureAwait(false);
 
-            
+
             var messages = await _messageService.GetBySessionAsync(CurrentSession.Id, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -448,5 +458,20 @@ public class InteractiveChatSession
         CurrentSession = null;
         IsProcessing = false;
         _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.SessionCleared));
+    }
+
+    /// <summary>
+    /// Ensures a git session is started if the git session service is enabled
+    /// </summary>
+    private async Task EnsureGitSessionStartedAsync(CancellationToken cancellationToken)
+    {
+        if (_gitSessionService != null)
+        {
+            var currentGitSession = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
+            if (currentGitSession == null)
+            {
+                await _gitSessionService.BeginSessionAsync(cancellationToken);
+            }
+        }
     }
 }
