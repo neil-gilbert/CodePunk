@@ -174,9 +174,7 @@ public class GitSessionService : IGitSessionService
         }
     }
 
-    public async Task<bool> AcceptSessionAsync(
-        string commitMessage,
-        CancellationToken cancellationToken = default)
+    public async Task<bool> AcceptSessionAsync(CancellationToken cancellationToken = default)
     {
         if (_currentSession == null)
         {
@@ -214,31 +212,13 @@ public class GitSessionService : IGitSessionService
                 return false;
             }
 
-            var hasStagedChangesResult = await _gitExecutor.HasStagedChangesAsync(cancellationToken);
-            _logger.LogInformation("Staged changes check: Success={Success}, Value={Value}",
-                hasStagedChangesResult.Success, hasStagedChangesResult.Value);
+            // Unstage all changes so user can review and commit manually
+            _logger.LogInformation("Unstaging changes to leave as modified files in working directory");
+            var resetResult = await _gitExecutor.ExecuteAsync("reset HEAD", cancellationToken);
 
-            if (hasStagedChangesResult.Success && hasStagedChangesResult.Value)
+            if (!resetResult.Success)
             {
-                _logger.LogInformation("Creating final commit with message: {Message}", commitMessage);
-
-                var finalCommitResult = await _gitExecutor.ExecuteAsync(
-                    $"commit -m \"{commitMessage.Replace("\"", "\\\"")}\"",
-                    cancellationToken);
-
-                if (!finalCommitResult.Success)
-                {
-                    _logger.LogError("Failed to create final commit: {Error}", finalCommitResult.Error);
-                    return false;
-                }
-            }
-            else if (!hasStagedChangesResult.Success)
-            {
-                _logger.LogWarning("Failed to check for staged changes: {Error}", hasStagedChangesResult.Error);
-            }
-            else
-            {
-                _logger.LogWarning("No staged changes after squash merge, skipping final commit");
+                _logger.LogWarning("Failed to unstage changes: {Error}", resetResult.Error);
             }
 
             _logger.LogInformation("Deleting shadow branch {ShadowBranch}", _currentSession.ShadowBranch);

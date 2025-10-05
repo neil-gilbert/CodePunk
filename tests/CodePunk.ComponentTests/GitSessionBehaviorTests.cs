@@ -43,7 +43,7 @@ public class GitSessionBehaviorTests : IDisposable
     }
 
     [Fact]
-    public async Task SessionCreationAndAccept_CreatesCleanCommit()
+    public async Task SessionCreationAndAccept_LeavesFilesAsUnstagedModifications()
     {
         var session = await _sessionService.BeginSessionAsync();
         session.Should().NotBeNull();
@@ -60,20 +60,25 @@ public class GitSessionBehaviorTests : IDisposable
         var commit3 = await _sessionService.CommitToolCallAsync("write_file", "Create file3.txt");
         commit3.Should().BeTrue("third commit should succeed");
 
-        var accepted = await _sessionService.AcceptSessionAsync("Add three files");
+        var accepted = await _sessionService.AcceptSessionAsync();
 
         accepted.Should().BeTrue("session accept should succeed");
 
         var currentBranch = await _gitExecutor.GetCurrentBranchAsync();
         currentBranch.Value.Should().Be("main");
 
-        var logResult = await _gitExecutor.ExecuteAsync("log --oneline -n 1");
-        logResult.Output.Should().Contain("Add three files");
-
+        // Files should exist in working directory
         File.Exists(Path.Combine(_testWorkspace, "file1.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "file2.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "file3.txt")).Should().BeTrue();
 
+        // Files should be unstaged modifications (not committed)
+        var statusResult = await _gitExecutor.ExecuteAsync("status --porcelain");
+        statusResult.Output.Should().Contain("file1.txt");
+        statusResult.Output.Should().Contain("file2.txt");
+        statusResult.Output.Should().Contain("file3.txt");
+
+        // Shadow branch should be deleted
         var branchesResult = await _gitExecutor.ExecuteAsync("branch");
         branchesResult.Output.Should().NotContain("ai/session");
     }
@@ -117,7 +122,7 @@ public class GitSessionBehaviorTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "session-file.txt"), "session content");
         await _sessionService.CommitToolCallAsync("write_file", "Create session file");
 
-        await _sessionService.AcceptSessionAsync("Session changes");
+        await _sessionService.AcceptSessionAsync();
 
         File.Exists(Path.Combine(_testWorkspace, "uncommitted.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "session-file.txt")).Should().BeTrue();
@@ -190,7 +195,7 @@ public class GitSessionBehaviorTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "session2.txt"), "content2");
         await _sessionService.CommitToolCallAsync("write_file", "Create session2 file");
 
-        await _sessionService.AcceptSessionAsync("Session 2 changes");
+        await _sessionService.AcceptSessionAsync();
 
         File.Exists(Path.Combine(_testWorkspace, "session2.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "session1.txt")).Should().BeFalse();

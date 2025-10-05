@@ -11,9 +11,7 @@ public interface IGitSessionService
         string summary,
         CancellationToken cancellationToken = default);
 
-    Task<bool> AcceptSessionAsync(
-        string commitMessage,
-        CancellationToken cancellationToken = default);
+    Task<bool> AcceptSessionAsync(CancellationToken cancellationToken = default);
 
     Task<bool> RejectSessionAsync(CancellationToken cancellationToken = default);
 

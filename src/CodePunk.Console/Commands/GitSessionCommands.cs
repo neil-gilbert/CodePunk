@@ -27,15 +27,16 @@ public class AcceptSessionCommand : ChatCommand
             return CommandResult.Ok();
         }
 
-        var commitMessage = args.Length > 0
-            ? string.Join(" ", args)
-            : $"AI Session: Applied {session.ToolCallCommits.Count} changes";
-
-        var success = await _sessionService.AcceptSessionAsync(commitMessage, cancellationToken);
+        var success = await _sessionService.AcceptSessionAsync(cancellationToken);
 
         if (success)
         {
-            AnsiConsole.MarkupLine(ConsoleStyles.Success($"Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged"));
+            AnsiConsole.MarkupLine(ConsoleStyles.Success($"Session accepted: {session.ToolCallCommits.Count} tool call(s) merged"));
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine(ConsoleStyles.Dim("Changes have been merged into your working directory as unstaged modifications."));
+            AnsiConsole.MarkupLine(ConsoleStyles.Dim("Review the changes, then commit them:"));
+            AnsiConsole.MarkupLine(ConsoleStyles.Accent("  git add ."));
+            AnsiConsole.MarkupLine(ConsoleStyles.Accent("  git commit -m \"Your commit message\""));
         }
         else
         {

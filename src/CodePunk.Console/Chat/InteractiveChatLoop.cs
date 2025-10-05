@@ -59,7 +59,7 @@ public class InteractiveChatLoop
         }
         _renderer.CompleteStreaming();
 
-        await AutoAcceptGitSessionAsync(cancellationToken);
+        await PromptForChangesApprovalAsync(cancellationToken);
 
         return sb.ToString();
     }
@@ -295,7 +295,7 @@ public class InteractiveChatLoop
 
             _renderer.CompleteStreaming();
 
-            await AutoAcceptGitSessionAsync(cancellationToken);
+            await PromptForChangesApprovalAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -306,28 +306,58 @@ public class InteractiveChatLoop
     }
 
     /// <summary>
-    /// Automatically accepts git session if one is active with commits (transparent to user)
+    /// Prompts user to accept or reject file changes if git session is active
     /// </summary>
-    private async Task AutoAcceptGitSessionAsync(CancellationToken cancellationToken)
+    private async Task PromptForChangesApprovalAsync(CancellationToken cancellationToken)
     {
         if (_gitSessionService == null) return;
 
         var session = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
         if (session == null || session.ToolCallCommits.Count == 0) return;
 
-        _logger.LogInformation("Auto-accepting git session with {Count} commits", session.ToolCallCommits.Count);
+        _console.WriteLine();
+        _console.MarkupLine($"[yellow]File changes detected:[/] {session.ToolCallCommits.Count} file(s) modified");
 
-        var commitMessage = $"AI Session: Applied {session.ToolCallCommits.Count} changes";
-        var accepted = await _gitSessionService.AcceptSessionAsync(commitMessage, cancellationToken);
+        var choice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[yellow]What would you like to do with these changes?[/]")
+                .AddChoices(new[] {
+                    "Accept changes",
+                    "Reject and discard changes"
+                }));
 
-        if (accepted)
+        if (choice == "Accept changes")
         {
-            _console.MarkupLine(ConsoleStyles.Success($"Changes committed: {session.ToolCallCommits.Count} file edit(s) applied"));
+            _logger.LogInformation("User accepted git session with {Count} commits", session.ToolCallCommits.Count);
+            var accepted = await _gitSessionService.AcceptSessionAsync(cancellationToken);
+
+            if (accepted)
+            {
+                _console.MarkupLine(ConsoleStyles.Success($"Changes applied: {session.ToolCallCommits.Count} file edit(s)"));
+                _console.MarkupLine(ConsoleStyles.Dim("Files are ready to review. Use 'git add' and 'git commit' when ready."));
+            }
+            else
+            {
+                _logger.LogWarning("Failed to accept git session");
+                _console.MarkupLine(ConsoleStyles.Error("Failed to apply changes. Check logs for details."));
+            }
         }
         else
         {
-            _logger.LogWarning("Failed to auto-accept git session");
-            _console.MarkupLine(ConsoleStyles.Error("Failed to commit changes. Check logs for details."));
+            _logger.LogInformation("User rejected git session with {Count} commits", session.ToolCallCommits.Count);
+            var rejected = await _gitSessionService.RejectSessionAsync(cancellationToken);
+
+            if (rejected)
+            {
+                _console.MarkupLine(ConsoleStyles.Success($"Changes discarded: {session.ToolCallCommits.Count} file edit(s) reverted"));
+            }
+            else
+            {
+                _logger.LogWarning("Failed to reject git session");
+                _console.MarkupLine(ConsoleStyles.Error("Failed to discard changes. Check logs for details."));
+            }
         }
+
+        _console.WriteLine();
     }
 }
