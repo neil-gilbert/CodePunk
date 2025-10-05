@@ -28,6 +28,14 @@ internal static class Telemetry
     }
 
     /// <summary>
+    /// Stops the current activity if one exists.
+    /// </summary>
+    public static void StopActivity()
+    {
+        Activity.Current?.Stop();
+    }
+
+    /// <summary>
     /// Adds a tag to the current activity if one exists.
     /// </summary>
     /// <param name="key">The tag key.</param>
@@ -41,8 +49,29 @@ internal static class Telemetry
     /// Logs an error with the current activity.
     /// </summary>
     /// <param name="exception">The exception to log.</param>
-    public static void LogError(Exception exception)
+    /// <param name="additionalContext">Optional additional context for the error.</param>
+    public static void LogError(Exception exception, string? additionalContext = null)
     {
-        Activity.Current?.SetStatus(ActivityStatusCode.Error, exception.Message);
+        var currentActivity = Activity.Current;
+        if (currentActivity != null)
+        {
+            currentActivity.SetStatus(ActivityStatusCode.Error, exception.Message);
+            currentActivity.SetTag("error.type", exception.GetType().FullName);
+            currentActivity.SetTag("error.stack_trace", exception.StackTrace);
+            
+            if (!string.IsNullOrWhiteSpace(additionalContext))
+            {
+                currentActivity.SetTag("error.context", additionalContext);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs an informational event.
+    /// </summary>
+    /// <param name="message">The informational message.</param>
+    public static void LogInfo(string message)
+    {
+        Activity.Current?.SetTag("info", message);
     }
 }
