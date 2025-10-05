@@ -119,8 +119,6 @@ public class InteractiveChatSession
         {
             _logger.LogInformation("Sending message to session {SessionId}", CurrentSession!.Id);
 
-            await EnsureGitSessionStartedAsync(cancellationToken);
-
             var userMessage = Message.Create(
                 CurrentSession.Id,
                 MessageRole.User,
@@ -230,8 +228,6 @@ public class InteractiveChatSession
         try
         {
             _logger.LogInformation("Sending streaming message to session {SessionId}", CurrentSession!.Id);
-
-            await EnsureGitSessionStartedAsync(cancellationToken);
 
             var userMessage = Message.Create(
                 CurrentSession.Id,
@@ -440,18 +436,4 @@ public class InteractiveChatSession
         _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.SessionCleared));
     }
 
-    /// <summary>
-    /// Ensures a git session is started if the git session service is enabled
-    /// </summary>
-    private async Task EnsureGitSessionStartedAsync(CancellationToken cancellationToken)
-    {
-        if (_gitSessionService != null)
-        {
-            var currentGitSession = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
-            if (currentGitSession == null)
-            {
-                await _gitSessionService.BeginSessionAsync(cancellationToken);
-            }
-        }
-    }
 }

@@ -1,6 +1,7 @@
 using System.Text;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
+using CodePunk.Console.Themes;
 using CodePunk.Core.Chat;
 using CodePunk.Core.GitSession;
 using Microsoft.Extensions.Logging;
@@ -57,8 +58,8 @@ public class InteractiveChatLoop
             if (!string.IsNullOrEmpty(chunk.ContentDelta)) sb.Append(chunk.ContentDelta);
         }
         _renderer.CompleteStreaming();
-        
-        await PromptGitSessionApprovalAsync(cancellationToken);
+
+        await AutoAcceptGitSessionAsync(cancellationToken);
 
         return sb.ToString();
     }
@@ -294,7 +295,7 @@ public class InteractiveChatLoop
 
             _renderer.CompleteStreaming();
 
-            await PromptGitSessionApprovalAsync(cancellationToken);
+            await AutoAcceptGitSessionAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -305,61 +306,28 @@ public class InteractiveChatLoop
     }
 
     /// <summary>
-    /// Prompts user to accept or reject git session changes if there's an active session
+    /// Automatically accepts git session if one is active with commits (transparent to user)
     /// </summary>
-    private async Task PromptGitSessionApprovalAsync(CancellationToken cancellationToken)
+    private async Task AutoAcceptGitSessionAsync(CancellationToken cancellationToken)
     {
         if (_gitSessionService == null) return;
 
         var session = await _gitSessionService.GetCurrentSessionAsync(cancellationToken);
         if (session == null || session.ToolCallCommits.Count == 0) return;
 
-        _console.WriteLine();
-        _console.MarkupLine($"[yellow]Git Session:[/] {session.ToolCallCommits.Count} file changes detected");
-        _console.MarkupLine($"[dim]Shadow branch: {session.ShadowBranch}[/]");
+        _logger.LogInformation("Auto-accepting git session with {Count} commits", session.ToolCallCommits.Count);
 
-        var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[yellow]What would you like to do with these changes?[/]")
-                .AddChoices(new[] {
-                    "Accept and commit all changes",
-                    "Reject and discard all changes",
-                    "Review changes first"
-                }));
+        var commitMessage = $"AI Session: Applied {session.ToolCallCommits.Count} changes";
+        var accepted = await _gitSessionService.AcceptSessionAsync(commitMessage, cancellationToken);
 
-        switch (choice)
+        if (accepted)
         {
-            case "Accept and commit all changes":
-                var commitMessage = $"AI Session: Applied {session.ToolCallCommits.Count} changes";
-                var accepted = await _gitSessionService.AcceptSessionAsync(commitMessage, cancellationToken);
-                if (accepted)
-                {
-                    _console.MarkupLine($"[green][/] Session accepted and committed: {session.ToolCallCommits.Count} tool calls merged");
-                }
-                else
-                {
-                    _console.MarkupLine("[red]Failed to accept session. Check logs for details.[/]");
-                }
-                break;
-
-            case "Reject and discard all changes":
-                var rejected = await _gitSessionService.RejectSessionAsync(cancellationToken);
-                if (rejected)
-                {
-                    _console.MarkupLine($"[green][/] Session rejected: {session.ToolCallCommits.Count} changes discarded");
-                }
-                else
-                {
-                    _console.MarkupLine("[red]Failed to reject session. Check logs for details.[/]");
-                }
-                break;
-
-            case "Review changes first":
-                _console.MarkupLine($"[dim]Use /session-status to review changes[/]");
-                _console.MarkupLine($"[dim]Use /accept-session to accept or /reject-session to discard[/]");
-                break;
+            _console.MarkupLine(ConsoleStyles.Success($"Changes committed: {session.ToolCallCommits.Count} file edit(s) applied"));
         }
-
-        _console.WriteLine();
+        else
+        {
+            _logger.LogWarning("Failed to auto-accept git session");
+            _console.MarkupLine(ConsoleStyles.Error("Failed to commit changes. Check logs for details."));
+        }
     }
 }

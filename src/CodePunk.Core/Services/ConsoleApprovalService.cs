@@ -41,7 +41,7 @@ public class ConsoleApprovalService : IApprovalService
                     if (!string.IsNullOrEmpty(diff))
                     {
                         var diffSections = ParseDiffIntoSections(diff);
-                        DisplayCondensedPreview(diffSections, request, stats);
+                        DisplaySideBySideDiff(diffSections, request, stats);
                     }
 
                     return new ApprovalResult(true);

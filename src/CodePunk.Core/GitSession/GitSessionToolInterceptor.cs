@@ -48,6 +48,17 @@ public class GitSessionToolInterceptor : IToolService
 
         try
         {
+            // Lazily create git session before first write tool executes
+            if (!IsReadOnlyTool(toolName))
+            {
+                var currentSession = await _sessionService.GetCurrentSessionAsync(cancellationToken);
+                if (currentSession == null)
+                {
+                    _logger.LogInformation("Creating git session before executing write tool {ToolName}", toolName);
+                    await _sessionService.BeginSessionAsync(cancellationToken);
+                }
+            }
+
             var result = await _innerToolService.ExecuteAsync(toolName, arguments, cancellationToken);
 
             if (result.IsError || result.UserCancelled)
