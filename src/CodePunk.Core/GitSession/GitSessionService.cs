@@ -8,6 +8,7 @@ public class GitSessionService : IGitSessionService
 {
     private readonly IGitCommandExecutor _gitExecutor;
     private readonly IGitSessionStateStore _stateStore;
+    private readonly IWorkingDirectoryProvider _workingDirProvider;
     private readonly GitSessionOptions _options;
     private readonly ILogger<GitSessionService> _logger;
     private GitSessionState? _currentSession;
@@ -15,11 +16,13 @@ public class GitSessionService : IGitSessionService
     public GitSessionService(
         IGitCommandExecutor gitExecutor,
         IGitSessionStateStore stateStore,
+        IWorkingDirectoryProvider workingDirProvider,
         IOptions<GitSessionOptions> options,
         ILogger<GitSessionService> logger)
     {
         _gitExecutor = gitExecutor;
         _stateStore = stateStore;
+        _workingDirProvider = workingDirProvider;
         _options = options.Value;
         _logger = logger;
     }
@@ -63,44 +66,39 @@ public class GitSessionService : IGitSessionService
         var sessionId = Guid.NewGuid().ToString("N");
         var shadowBranch = $"{_options.BranchPrefix}-{sessionId[..8]}";
 
-        string? stashId = null;
-        if (_options.StashUncommittedChanges)
-        {
-            var hasChangesResult = await _gitExecutor.HasUncommittedChangesAsync(cancellationToken);
-            if (hasChangesResult.Success && hasChangesResult.Value)
-            {
-                var stashResult = await _gitExecutor.ExecuteAsync(
-                    "stash push -u -m \"CodePunk: Auto-stash before AI session\"",
-                    cancellationToken);
+        // Create worktree in temp directory
+        var worktreeBasePath = _options.GetExpandedWorktreeBasePath();
+        var worktreePath = Path.Combine(worktreeBasePath, sessionId);
 
-                if (stashResult.Success)
-                {
-                    stashId = "stash@{0}";
-                    _logger.LogInformation("Stashed uncommitted changes");
-                }
-            }
+        // Ensure base directory exists
+        if (!Directory.Exists(worktreeBasePath))
+        {
+            Directory.CreateDirectory(worktreeBasePath);
         }
 
-        var createBranchResult = await _gitExecutor.ExecuteAsync(
-            $"checkout -b {shadowBranch}",
+        _logger.LogInformation("Creating worktree at {WorktreePath} for session {SessionId}",
+            worktreePath, sessionId);
+
+        var createWorktreeResult = await _gitExecutor.ExecuteAsync(
+            $"worktree add \"{worktreePath}\" -b {shadowBranch}",
             cancellationToken);
 
-        if (!createBranchResult.Success)
+        if (!createWorktreeResult.Success)
         {
-            _logger.LogError("Failed to create shadow branch: {Error}", createBranchResult.Error);
-            if (stashId != null)
-            {
-                await _gitExecutor.ExecuteAsync("stash pop", cancellationToken);
-            }
+            _logger.LogError("Failed to create worktree: {Error}", createWorktreeResult.Error);
             return null;
         }
 
-        var session = GitSessionState.Create(shadowBranch, originalBranch, stashId);
+        // Update working directory provider to point to worktree
+        _workingDirProvider.SetWorkingDirectory(worktreePath);
+
+        // Create session state
+        var session = GitSessionState.Create(shadowBranch, originalBranch, worktreePath);
         await _stateStore.SaveAsync(session, cancellationToken);
 
         _currentSession = session;
-        _logger.LogInformation("Started git session {SessionId} on shadow branch {ShadowBranch}",
-            session.SessionId, shadowBranch);
+        _logger.LogInformation("Started git session {SessionId} in worktree {WorktreePath}",
+            session.SessionId, worktreePath);
 
         return session;
     }
@@ -184,62 +182,92 @@ public class GitSessionService : IGitSessionService
 
         try
         {
-            _logger.LogInformation("Accepting session {SessionId}, checking out {OriginalBranch}",
-                _currentSession.SessionId, _currentSession.OriginalBranch);
+            var worktreePath = _currentSession.WorktreePath;
+            var originalDir = _workingDirProvider.GetOriginalDirectory();
 
-            var checkoutResult = await _gitExecutor.ExecuteAsync(
-                $"checkout {_currentSession.OriginalBranch}",
-                cancellationToken);
+            _logger.LogInformation("Accepting session {SessionId}, applying changes from worktree to {OriginalDir}",
+                _currentSession.SessionId, originalDir);
 
-            if (!checkoutResult.Success)
+            // Create a patch from the worktree (diff from original branch to current HEAD)
+            var patchResult = await _gitExecutor.ExecuteAsync(
+                $"diff {_currentSession.OriginalBranch} --binary",
+                cancellationToken,
+                workingDirectory: worktreePath);
+
+            if (!patchResult.Success)
             {
-                _logger.LogError("Failed to checkout original branch {Branch}: {Error}",
-                    _currentSession.OriginalBranch, checkoutResult.Error);
+                _logger.LogError("Failed to create patch: {Error}", patchResult.Error);
                 return false;
             }
 
-            _logger.LogInformation("Squash merging {ShadowBranch} into {OriginalBranch}",
-                _currentSession.ShadowBranch, _currentSession.OriginalBranch);
-
-            var mergeResult = await _gitExecutor.ExecuteAsync(
-                $"merge --squash {_currentSession.ShadowBranch}",
-                cancellationToken);
-
-            if (!mergeResult.Success)
+            // Apply patch to user's workspace (if there are changes)
+            if (!string.IsNullOrWhiteSpace(patchResult.Output))
             {
-                _logger.LogError("Failed to squash merge {ShadowBranch}: {Error}",
-                    _currentSession.ShadowBranch, mergeResult.Error);
-                return false;
-            }
+                _logger.LogInformation("Applying patch to user workspace");
 
-            // Unstage all changes so user can review and commit manually
-            _logger.LogInformation("Unstaging changes to leave as modified files in working directory");
-            var resetResult = await _gitExecutor.ExecuteAsync("reset HEAD", cancellationToken);
+                // Write patch to temp file
+                var patchFile = Path.Combine(Path.GetTempPath(), $"codepunk-patch-{_currentSession.SessionId}.patch");
+                await File.WriteAllTextAsync(patchFile, patchResult.Output, cancellationToken);
 
-            if (!resetResult.Success)
-            {
-                _logger.LogWarning("Failed to unstage changes: {Error}", resetResult.Error);
-            }
-
-            _logger.LogInformation("Deleting shadow branch {ShadowBranch}", _currentSession.ShadowBranch);
-            await _gitExecutor.ExecuteAsync($"branch -D {_currentSession.ShadowBranch}", cancellationToken);
-
-            if (_currentSession.StashId != null)
-            {
-                _logger.LogInformation("Restoring stashed changes");
-                var popResult = await _gitExecutor.ExecuteAsync("stash pop", cancellationToken);
-                if (!popResult.Success)
+                try
                 {
-                    _logger.LogWarning("Failed to restore stash: {Error}", popResult.Error);
+                    var applyResult = await _gitExecutor.ExecuteAsync(
+                        $"apply \"{patchFile}\"",
+                        cancellationToken,
+                        workingDirectory: originalDir);
+
+                    if (!applyResult.Success)
+                    {
+                        _logger.LogError("Failed to apply patch to user workspace: {Error}", applyResult.Error);
+                        return false;
+                    }
+                }
+                finally
+                {
+                    if (File.Exists(patchFile))
+                    {
+                        File.Delete(patchFile);
+                    }
                 }
             }
 
+            // Remove worktree
+            _logger.LogInformation("Removing worktree {WorktreePath}", worktreePath);
+            var removeWorktreeResult = await _gitExecutor.ExecuteAsync(
+                $"worktree remove \"{worktreePath}\" --force",
+                cancellationToken,
+                workingDirectory: originalDir);
+
+            if (!removeWorktreeResult.Success)
+            {
+                _logger.LogWarning("Failed to remove worktree (will cleanup manually): {Error}",
+                    removeWorktreeResult.Error);
+
+                // Manual cleanup
+                if (Directory.Exists(worktreePath))
+                {
+                    Directory.Delete(worktreePath, recursive: true);
+                }
+            }
+
+            // Delete shadow branch
+            _logger.LogInformation("Deleting shadow branch {ShadowBranch}", _currentSession.ShadowBranch);
+            await _gitExecutor.ExecuteAsync(
+                $"branch -D {_currentSession.ShadowBranch}",
+                cancellationToken,
+                workingDirectory: originalDir);
+
+            // Cleanup session state
             _currentSession = _currentSession.MarkAccepted();
             await _stateStore.SaveAsync(_currentSession, cancellationToken);
             await _stateStore.DeleteAsync(_currentSession.SessionId, cancellationToken);
 
             _logger.LogInformation("Successfully accepted session {SessionId}", _currentSession.SessionId);
+
+            // Reset working directory provider
+            _workingDirProvider.SetWorkingDirectory(originalDir);
             _currentSession = null;
+
             return true;
         }
         catch (Exception ex)
@@ -289,46 +317,43 @@ public class GitSessionService : IGitSessionService
     {
         try
         {
-            _logger.LogInformation("Reverting session {SessionId}, reason: {Reason}", session.SessionId, reason);
-            _logger.LogInformation("Checking out original branch: {OriginalBranch}", session.OriginalBranch);
+            _logger.LogInformation("Reverting session {SessionId}, reason: {Reason}",
+                session.SessionId, reason);
 
-            var checkoutResult = await _gitExecutor.ExecuteAsync(
-                $"checkout {session.OriginalBranch}",
-                cancellationToken);
+            var originalDir = _workingDirProvider.GetOriginalDirectory();
+            var worktreePath = session.WorktreePath;
 
-            if (!checkoutResult.Success)
+            // Remove worktree
+            _logger.LogInformation("Removing worktree {WorktreePath}", worktreePath);
+            var removeWorktreeResult = await _gitExecutor.ExecuteAsync(
+                $"worktree remove \"{worktreePath}\" --force",
+                cancellationToken,
+                workingDirectory: originalDir);
+
+            if (!removeWorktreeResult.Success)
             {
-                _logger.LogError("Failed to checkout original branch {Branch}: {Error}",
-                    session.OriginalBranch, checkoutResult.Error);
+                _logger.LogWarning("Failed to remove worktree: {Error}", removeWorktreeResult.Error);
+
+                // Manual cleanup
+                if (Directory.Exists(worktreePath))
+                {
+                    Directory.Delete(worktreePath, recursive: true);
+                }
             }
 
-            if (_options.KeepFailedSessionBranches && session.IsFailed)
+            // Delete shadow branch (unless keeping failed sessions)
+            if (!(_options.KeepFailedSessionBranches && session.IsFailed))
             {
-                _logger.LogInformation("Keeping failed session branch {ShadowBranch} for debugging",
-                    session.ShadowBranch);
+                _logger.LogInformation("Deleting shadow branch {ShadowBranch}", session.ShadowBranch);
+                await _gitExecutor.ExecuteAsync(
+                    $"branch -D {session.ShadowBranch}",
+                    cancellationToken,
+                    workingDirectory: originalDir);
             }
             else
             {
-                _logger.LogInformation("Deleting shadow branch: {ShadowBranch}", session.ShadowBranch);
-                var deleteBranchResult = await _gitExecutor.ExecuteAsync(
-                    $"branch -D {session.ShadowBranch}",
-                    cancellationToken);
-
-                if (!deleteBranchResult.Success)
-                {
-                    _logger.LogWarning("Failed to delete shadow branch {ShadowBranch}: {Error}",
-                        session.ShadowBranch, deleteBranchResult.Error);
-                }
-            }
-
-            if (session.StashId != null)
-            {
-                _logger.LogInformation("Restoring stashed changes");
-                var popResult = await _gitExecutor.ExecuteAsync("stash pop", cancellationToken);
-                if (!popResult.Success)
-                {
-                    _logger.LogWarning("Failed to restore stash: {Error}", popResult.Error);
-                }
+                _logger.LogInformation("Keeping failed session branch {ShadowBranch} for debugging",
+                    session.ShadowBranch);
             }
 
             await _stateStore.DeleteAsync(session.SessionId, cancellationToken);
@@ -338,6 +363,7 @@ public class GitSessionService : IGitSessionService
 
             if (_currentSession?.SessionId == session.SessionId)
             {
+                _workingDirProvider.SetWorkingDirectory(originalDir);
                 _currentSession = null;
             }
         }

@@ -5,7 +5,7 @@ public record GitSessionState
     public required string SessionId { get; init; }
     public required string ShadowBranch { get; init; }
     public required string OriginalBranch { get; init; }
-    public string? StashId { get; init; }
+    public required string WorktreePath { get; init; }
     public List<GitToolCallCommit> ToolCallCommits { get; init; } = new();
     public required DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset? AcceptedAt { get; init; }
@@ -14,7 +14,7 @@ public record GitSessionState
     public bool IsFailed { get; init; }
     public string? FailureReason { get; init; }
 
-    public static GitSessionState Create(string shadowBranch, string originalBranch, string? stashId = null)
+    public static GitSessionState Create(string shadowBranch, string originalBranch, string worktreePath)
     {
         var now = DateTimeOffset.UtcNow;
         return new GitSessionState
@@ -22,7 +22,7 @@ public record GitSessionState
             SessionId = Guid.NewGuid().ToString("N"),
             ShadowBranch = shadowBranch,
             OriginalBranch = originalBranch,
-            StashId = stashId,
+            WorktreePath = worktreePath,
             StartedAt = now,
             LastActivityAt = now
         };

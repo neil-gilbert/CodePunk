@@ -120,12 +120,17 @@ public class GitCommandExecutorTests : IDisposable
 
 internal class FixedWorkingDirectoryProvider : IWorkingDirectoryProvider
 {
-    private readonly string _directory;
+    private readonly string _originalDirectory;
+    private string? _overrideDirectory;
 
     public FixedWorkingDirectoryProvider(string directory)
     {
-        _directory = directory;
+        _originalDirectory = directory;
     }
 
-    public string GetWorkingDirectory() => _directory;
+    public string GetWorkingDirectory() => _overrideDirectory ?? _originalDirectory;
+
+    public void SetWorkingDirectory(string path) => _overrideDirectory = path;
+
+    public string GetOriginalDirectory() => _originalDirectory;
 }

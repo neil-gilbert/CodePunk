@@ -129,13 +129,9 @@ public class SessionStatusCommand : ChatCommand
         table.AddRow("Session ID", ConsoleStyles.Dim(session.SessionId[..8]));
         table.AddRow("Shadow Branch", ConsoleStyles.Accent(session.ShadowBranch));
         table.AddRow("Original Branch", ConsoleStyles.Accent(session.OriginalBranch));
+        table.AddRow("Worktree Path", ConsoleStyles.Dim(session.WorktreePath));
         table.AddRow("Started", session.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
         table.AddRow("Tool Calls", session.ToolCallCommits.Count.ToString());
-
-        if (session.StashId != null)
-        {
-            table.AddRow("Stashed Changes", ConsoleStyles.Success("Yes"));
-        }
 
         console.Write(table);
         console.WriteLine();

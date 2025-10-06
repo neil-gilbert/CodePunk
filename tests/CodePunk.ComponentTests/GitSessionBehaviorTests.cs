@@ -36,6 +36,7 @@ public class GitSessionBehaviorTests : IDisposable
         _sessionService = new GitSessionService(
             _gitExecutor,
             _stateStore,
+            workingDirProvider,
             Options.Create(_options),
             NullLogger<GitSessionService>.Instance);
 
@@ -47,16 +48,18 @@ public class GitSessionBehaviorTests : IDisposable
     {
         var session = await _sessionService.BeginSessionAsync();
         session.Should().NotBeNull();
+        var worktreePath = session!.WorktreePath;
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "content1");
+        // Write files to worktree (where session operates)
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file1.txt"), "content1");
         var commit1 = await _sessionService.CommitToolCallAsync("write_file", "Create file1.txt");
         commit1.Should().BeTrue("first commit should succeed");
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file2.txt"), "content2");
         var commit2 = await _sessionService.CommitToolCallAsync("write_file", "Create file2.txt");
         commit2.Should().BeTrue("second commit should succeed");
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file3.txt"), "content3");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file3.txt"), "content3");
         var commit3 = await _sessionService.CommitToolCallAsync("write_file", "Create file3.txt");
         commit3.Should().BeTrue("third commit should succeed");
 
@@ -67,7 +70,7 @@ public class GitSessionBehaviorTests : IDisposable
         var currentBranch = await _gitExecutor.GetCurrentBranchAsync();
         currentBranch.Value.Should().Be("main");
 
-        // Files should exist in working directory
+        // Files should exist in user workspace (applied from worktree)
         File.Exists(Path.Combine(_testWorkspace, "file1.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "file2.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "file3.txt")).Should().BeTrue();
@@ -86,16 +89,19 @@ public class GitSessionBehaviorTests : IDisposable
     [Fact]
     public async Task SessionRejection_DiscardsAllChanges()
     {
+        // Create file in user workspace
         await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "original.txt"), "original");
         await _gitExecutor.ExecuteAsync("add original.txt");
         await _gitExecutor.ExecuteAsync("commit -m \"Add original\"");
 
         var session = await _sessionService.BeginSessionAsync();
+        var worktreePath = session!.WorktreePath;
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "content1");
+        // Write files to worktree
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file1.txt"), "content1");
         await _sessionService.CommitToolCallAsync("write_file", "Create file1");
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file2.txt"), "content2");
         await _sessionService.CommitToolCallAsync("write_file", "Create file2");
 
         var rejected = await _sessionService.RejectSessionAsync();
@@ -105,26 +111,33 @@ public class GitSessionBehaviorTests : IDisposable
         var currentBranch = await _gitExecutor.GetCurrentBranchAsync();
         currentBranch.Value.Should().Be("main");
 
+        // User workspace should be untouched (files not applied)
         File.Exists(Path.Combine(_testWorkspace, "file1.txt")).Should().BeFalse();
         File.Exists(Path.Combine(_testWorkspace, "file2.txt")).Should().BeFalse();
         File.Exists(Path.Combine(_testWorkspace, "original.txt")).Should().BeTrue();
     }
 
     [Fact]
-    public async Task UncommittedChangesPreservation_RestoresChanges()
+    public async Task WorkspaceIsolation_UncommittedChangesUntouched()
     {
+        // Create uncommitted file in user workspace
         await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "uncommitted.txt"), "uncommitted work");
 
         var session = await _sessionService.BeginSessionAsync();
         session.Should().NotBeNull();
-        session!.StashId.Should().NotBeNull();
+        session!.WorktreePath.Should().NotBeNull();
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "session-file.txt"), "session content");
+        // Create file in worktree (session workspace)
+        await File.WriteAllTextAsync(Path.Combine(session.WorktreePath, "session-file.txt"), "session content");
         await _sessionService.CommitToolCallAsync("write_file", "Create session file");
 
         await _sessionService.AcceptSessionAsync();
 
+        // Uncommitted file should still exist untouched in user workspace
         File.Exists(Path.Combine(_testWorkspace, "uncommitted.txt")).Should().BeTrue();
+        File.ReadAllText(Path.Combine(_testWorkspace, "uncommitted.txt")).Should().Be("uncommitted work");
+
+        // Session file should be applied to user workspace
         File.Exists(Path.Combine(_testWorkspace, "session-file.txt")).Should().BeTrue();
     }
 
@@ -132,19 +145,19 @@ public class GitSessionBehaviorTests : IDisposable
     public async Task MultipleToolCalls_CreatesMultipleCommits()
     {
         var session = await _sessionService.BeginSessionAsync();
+        var worktreePath = session!.WorktreePath;
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file1.txt"), "content1");
         await _sessionService.CommitToolCallAsync("write_file", "Create file1");
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file2.txt"), "content2");
         await _sessionService.CommitToolCallAsync("replace_in_file", "Modify file2");
 
-        await _gitExecutor.ExecuteAsync("checkout main");
-        await _gitExecutor.ExecuteAsync($"checkout {session!.ShadowBranch}");
-
-        var logResult = await _gitExecutor.ExecuteAsync("log --oneline");
+        // Check commits in the worktree (which is on the shadow branch)
+        var logResult = await _gitExecutor.ExecuteAsync("log --oneline", workingDirectory: worktreePath);
         var commitCount = logResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
 
+        // Should have: initial commit + 2 tool commits
         commitCount.Should().BeGreaterThan(2);
     }
 
@@ -164,6 +177,7 @@ public class GitSessionBehaviorTests : IDisposable
             var service = new GitSessionService(
                 executor,
                 stateStore,
+                workingDirProvider,
                 Options.Create(_options),
                 NullLogger<GitSessionService>.Instance);
 
@@ -182,21 +196,26 @@ public class GitSessionBehaviorTests : IDisposable
     {
         var session1 = await _sessionService.BeginSessionAsync();
         session1.Should().NotBeNull();
+        var worktree1Path = session1!.WorktreePath;
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "session1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(worktree1Path, "session1.txt"), "content1");
         await _sessionService.CommitToolCallAsync("write_file", "Create session1 file");
 
+        // Starting new session should auto-revert the first session
         var session2 = await _sessionService.BeginSessionAsync();
         session2.Should().NotBeNull();
-        session2!.SessionId.Should().NotBe(session1!.SessionId);
+        session2!.SessionId.Should().NotBe(session1.SessionId);
+        var worktree2Path = session2.WorktreePath;
 
+        // User workspace should not have session1 file (session1 was reverted)
         File.Exists(Path.Combine(_testWorkspace, "session1.txt")).Should().BeFalse();
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "session2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(worktree2Path, "session2.txt"), "content2");
         await _sessionService.CommitToolCallAsync("write_file", "Create session2 file");
 
         await _sessionService.AcceptSessionAsync();
 
+        // Only session2 file should be in user workspace
         File.Exists(Path.Combine(_testWorkspace, "session2.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_testWorkspace, "session1.txt")).Should().BeFalse();
     }
@@ -218,8 +237,9 @@ public class GitSessionBehaviorTests : IDisposable
     {
         var session = await _sessionService.BeginSessionAsync();
         var sessionId = session!.SessionId;
+        var worktreePath = session.WorktreePath;
 
-        await File.WriteAllTextAsync(Path.Combine(_testWorkspace, "file1.txt"), "content");
+        await File.WriteAllTextAsync(Path.Combine(worktreePath, "file1.txt"), "content");
         await _sessionService.CommitToolCallAsync("write_file", "Create file");
 
         var loadedSession = await _stateStore.LoadAsync(sessionId);

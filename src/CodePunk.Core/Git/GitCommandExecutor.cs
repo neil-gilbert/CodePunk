@@ -56,17 +56,20 @@ public class GitCommandExecutor : IGitCommandExecutor
         return "git";
     }
 
-    public async Task<GitOperationResult> ExecuteAsync(string arguments, CancellationToken cancellationToken = default)
+    public async Task<GitOperationResult> ExecuteAsync(
+        string arguments,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         try
         {
-            var workingDirectory = _workingDirectoryProvider.GetWorkingDirectory();
+            var workDir = workingDirectory ?? _workingDirectoryProvider.GetWorkingDirectory();
 
             var startInfo = new ProcessStartInfo
             {
                 FileName = _gitExecutablePath,
                 Arguments = arguments,
-                WorkingDirectory = workingDirectory,
+                WorkingDirectory = workDir,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

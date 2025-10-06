@@ -5,8 +5,7 @@ public class GitSessionOptions
     public bool Enabled { get; set; } = true;
     public bool AutoStartSession { get; set; } = true;
     public string BranchPrefix { get; set; } = "ai/session";
-    public bool StashUncommittedChanges { get; set; } = true;
-    public string DefaultCommitMessageTemplate { get; set; } = "AI Session: {summary}";
+    public string WorktreeBasePath { get; set; } = "";  // Empty = use system temp directory
     public int SessionTimeoutMinutes { get; set; } = 30;
     public bool AutoRevertOnTimeout { get; set; } = true;
     public bool CleanupOrphanedSessionsOnStartup { get; set; } = true;
@@ -16,6 +15,22 @@ public class GitSessionOptions
     public string GetExpandedStateStorePath()
     {
         var path = StateStorePath;
+        if (path.StartsWith("~/"))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            path = Path.Combine(home, path[2..]);
+        }
+        return path;
+    }
+
+    public string GetExpandedWorktreeBasePath()
+    {
+        if (string.IsNullOrEmpty(WorktreeBasePath))
+        {
+            return Path.Combine(Path.GetTempPath(), "codepunk-sessions");
+        }
+
+        var path = WorktreeBasePath;
         if (path.StartsWith("~/"))
         {
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

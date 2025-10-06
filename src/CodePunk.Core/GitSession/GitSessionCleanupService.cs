@@ -112,15 +112,6 @@ public class GitSessionCleanupService : IHostedService
                 }
             }
 
-            if (session.StashId != null)
-            {
-                var hasStashResult = await _gitExecutor.ExecuteAsync("stash list", cancellationToken);
-                if (hasStashResult.Success && hasStashResult.Output.Contains("CodePunk: Auto-stash"))
-                {
-                    await _gitExecutor.ExecuteAsync("stash pop", cancellationToken);
-                }
-            }
-
             await _stateStore.DeleteAsync(session.SessionId, cancellationToken);
 
             _logger.LogInformation("Reverted orphaned session {SessionId}", session.SessionId);

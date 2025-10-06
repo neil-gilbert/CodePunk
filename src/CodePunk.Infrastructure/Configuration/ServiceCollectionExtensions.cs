@@ -53,16 +53,28 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<ILLMService, LLMService>();
 
+        // Always register Git Session services so they're available for cleanup
+        // They will self-disable based on configuration
+        if (configuration != null)
+        {
+            services.Configure<GitSessionOptions>(configuration.GetSection("GitSession"));
+        }
+        else
+        {
+            services.Configure<GitSessionOptions>(options => options.Enabled = false);
+        }
+
+        // Core git services - now scoped for worktree support
+        services.AddScoped<IWorkingDirectoryProvider, DefaultWorkingDirectoryProvider>();
+        services.AddSingleton<IGitCommandExecutor, GitCommandExecutor>();
+        services.AddSingleton<IGitSessionStateStore, GitSessionStateStore>();
+        services.AddScoped<IGitSessionService, GitSessionService>();
+
         var gitSessionOptions = configuration?.GetSection("GitSession").Get<GitSessionOptions>();
         var gitSessionEnabled = gitSessionOptions?.Enabled ?? false;
 
         if (configuration != null && gitSessionEnabled)
         {
-            services.Configure<GitSessionOptions>(configuration.GetSection("GitSession"));
-            services.AddSingleton<IWorkingDirectoryProvider, DefaultWorkingDirectoryProvider>();
-            services.AddSingleton<IGitCommandExecutor, GitCommandExecutor>();
-            services.AddSingleton<IGitSessionStateStore, GitSessionStateStore>();
-            services.AddScoped<IGitSessionService, GitSessionService>();
             services.AddHostedService<GitSessionCleanupService>();
 
             services.AddScoped<ToolService>();
