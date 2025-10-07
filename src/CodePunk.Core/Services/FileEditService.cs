@@ -191,18 +191,40 @@ public class FileEditService : IFileEditService
     private static ValidationResult ValidateFilePath(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
-            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path cannot be empty");
+            return ValidationResult.Error(FileEditErrorCodes.InvalidPath, "File path cannot be empty");
 
-        if (filePath.Contains("..") || filePath.StartsWith("/") || filePath.StartsWith("\\"))
-            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "Invalid file path");
+        try
+        {
+            var workspaceRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
+            var fullPath = Path.IsPathFullyQualified(filePath)
+                ? Path.GetFullPath(filePath)
+                : Path.GetFullPath(filePath, workspaceRoot);
 
-        var fullPath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
-        var workspaceRoot = Directory.GetCurrentDirectory();
+            if (!IsPathWithinRoot(fullPath, workspaceRoot))
+                return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path outside workspace");
 
-        if (!fullPath.StartsWith(workspaceRoot, StringComparison.OrdinalIgnoreCase))
-            return ValidationResult.Error(FileEditErrorCodes.PathOutOfRoot, "File path outside workspace");
+            return ValidationResult.Success();
+        }
+        catch (Exception ex)
+        {
+            return ValidationResult.Error(FileEditErrorCodes.InvalidPath, $"Invalid file path: {ex.Message}");
+        }
+    }
 
-        return ValidationResult.Success();
+    private static bool IsPathWithinRoot(string fullPath, string rootPath)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        var normalizedRoot = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedFull = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (string.Equals(normalizedFull, normalizedRoot, comparison))
+            return true;
+
+        var rootWithSeparator = normalizedRoot + Path.DirectorySeparatorChar;
+        return normalizedFull.StartsWith(rootWithSeparator, comparison);
     }
 
     private static async Task<ValidationResult> ValidateFileForEdit(string fullPath, CancellationToken cancellationToken)
