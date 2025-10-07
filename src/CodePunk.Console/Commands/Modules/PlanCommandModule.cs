@@ -314,6 +314,7 @@ internal sealed class PlanCommandModule : ICommandModule
             var store = services.GetRequiredService<IPlanFileStore>();
             var rec = await store.GetAsync(id);
             var console = services.GetRequiredService<IAnsiConsole>();
+            var diffRenderer = services.GetRequiredService<DiffRenderer>();
             if (rec == null) { if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Error("Plan not found")); return; }
             if (json)
             {
@@ -325,7 +326,7 @@ internal sealed class PlanCommandModule : ICommandModule
             {
                 if (!string.IsNullOrWhiteSpace(f.Diff))
                 {
-                    if (!OutputContext.IsQuiet()) console.Write(new Panel(new Markup("[silver]"+ConsoleStyles.Escape(f.Diff)+"[/]")).Header(ConsoleStyles.PanelTitle(f.Path)).RoundedBorder());
+                    if (!OutputContext.IsQuiet()) console.Write(diffRenderer.Render(f.Diff, f.Path));
                 }
             }
         }, diffIdOpt, diffJsonOpt);

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using CodePunk.Console.Planning;
 using CodePunk.Console.Providers;
 using Microsoft.Extensions.Logging;
+using CodePunk.Core.SyntaxHighlighting.Abstractions;
 
 namespace CodePunk.Console.Configuration;
 
@@ -35,8 +36,14 @@ public static class ConsoleServiceCollectionExtensions
         {
             var console = sp.GetRequiredService<IAnsiConsole>();
             var options = sp.GetRequiredService<StreamingRendererOptions>();
-            var highlighter = sp.GetService<Core.SyntaxHighlighting.Abstractions.ISyntaxHighlighter>();
+            var highlighter = sp.GetService<ISyntaxHighlighter>();
             return new StreamingResponseRenderer(console, options, highlighter);
+        });
+
+        services.AddSingleton<DiffRenderer>(sp =>
+        {
+            var highlighter = sp.GetService<ISyntaxHighlighter>();
+            return new DiffRenderer(highlighter);
         });
 
         services.AddTransient<ChatCommand, HelpCommand>();
