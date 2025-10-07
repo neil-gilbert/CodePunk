@@ -86,6 +86,7 @@ public static class FileEditErrorCodes
     public const string PermissionDenied = "PERMISSION_DENIED";
     public const string WriteFailed = "WRITE_FAILED";
     public const string PathOutOfRoot = "PATH_OUT_OF_ROOT";
+    public const string InvalidPath = "INVALID_PATH";
     public const string BinaryFile = "BINARY_FILE";
     public const string FileTooLarge = "FILE_TOO_LARGE";
     public const string Conflict = "CONFLICT";
