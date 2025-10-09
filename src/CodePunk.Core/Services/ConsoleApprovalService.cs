@@ -15,6 +15,10 @@ public class ConsoleApprovalService : IApprovalService
     private readonly ISyntaxHighlighter? _syntaxHighlighter;
     private bool _autoApproveSession = false;
 
+    private const string AdditionBackground = "cadetblue";
+    private const string DeletionBackground = "indianred";
+    private const string ContextBackground = "grey11";
+
     public ConsoleApprovalService(
         ILogger<ConsoleApprovalService> logger,
         ISyntaxHighlighter? syntaxHighlighter = null)
@@ -164,14 +168,22 @@ public class ConsoleApprovalService : IApprovalService
         var isFileCreation = filteredLines.All(l => l.Type == DiffLineType.Addition);
         var availableWidth = Math.Max(80, System.Console.WindowWidth - 10);
 
+        string FormatLine(string numberMarkup, string indicatorMarkup, string bodyMarkup, string backgroundColor, int visibleLength)
+        {
+            var padding = Math.Max(0, availableWidth - visibleLength);
+            return $"[on {backgroundColor}]{numberMarkup} {indicatorMarkup} {bodyMarkup}{new string(' ', padding)}[/]";
+        }
+
+        static string FormatLineNumber(int lineNumber, string color)
+            => lineNumber >= 0 ? $"[{color}]{lineNumber,3}[/]" : $"[{color}]   [/]";
+
         if (isFileCreation)
         {
             var additionLines = filteredLines.Select(line =>
             {
                 var highlighted = RenderHighlightedCode(line.Content, request.FilePath);
-                var content = $"[cadetblue]{line.NewLineNum,3}[/] {WrapWithBackground($"[white]+[/] {highlighted}", "cadetblue")}";
-                var padding = Math.Max(0, availableWidth - (6 + line.Content.Length));
-                return $"[on grey11]{content}{new string(' ', padding)}[/]";
+                var numberMarkup = FormatLineNumber(line.NewLineNum, AdditionBackground);
+                return FormatLine(numberMarkup, "[white]+[/]", highlighted, AdditionBackground, 6 + line.Content.Length);
             });
 
             var creationPanel = new Panel(new Markup(string.Join("\n", additionLines)))
@@ -189,32 +201,27 @@ public class ConsoleApprovalService : IApprovalService
 
         foreach (var line in filteredLines)
         {
-            string content;
-            int visibleLength;
-
             switch (line.Type)
             {
                 case DiffLineType.Context:
                     var lineNum = line.OldLineNum != -1 ? line.OldLineNum : line.NewLineNum;
-                    content = $"[dim]{lineNum,3}[/]   [dim]{Markup.Escape(line.Content)}[/]";
-                    visibleLength = 6 + line.Content.Length;
+                    var contextNumber = FormatLineNumber(lineNum, "dim");
+                    var contextHighlighted = RenderHighlightedCode(line.Content, request.FilePath);
+                    unifiedLines.Add(FormatLine(contextNumber, "[dim] [/]", contextHighlighted, ContextBackground, 6 + line.Content.Length));
                     break;
                 case DiffLineType.Deletion:
                     var deleted = RenderHighlightedCode(line.Content, request.FilePath);
-                    content = $"[indianred]{line.OldLineNum,3}[/] {WrapWithBackground($"[white]-[/] {deleted}", "indianred")}";
-                    visibleLength = 6 + line.Content.Length;
+                    var deletionNumber = FormatLineNumber(line.OldLineNum, DeletionBackground);
+                    unifiedLines.Add(FormatLine(deletionNumber, "[white]-[/]", deleted, DeletionBackground, 6 + line.Content.Length));
                     break;
                 case DiffLineType.Addition:
                     var added = RenderHighlightedCode(line.Content, request.FilePath);
-                    content = $"[cadetblue]{line.NewLineNum,3}[/] {WrapWithBackground($"[white]+[/] {added}", "cadetblue")}";
-                    visibleLength = 6 + line.Content.Length;
+                    var additionNumber = FormatLineNumber(line.NewLineNum, AdditionBackground);
+                    unifiedLines.Add(FormatLine(additionNumber, "[white]+[/]", added, AdditionBackground, 6 + line.Content.Length));
                     break;
                 default:
                     continue;
             }
-
-            var padding = Math.Max(0, availableWidth - visibleLength);
-            unifiedLines.Add($"[on grey11]{content}{new string(' ', padding)}[/]");
         }
 
         var diffPanel = new Panel(new Markup(string.Join("\n", unifiedLines)))
@@ -293,9 +300,6 @@ public class ConsoleApprovalService : IApprovalService
 
         return result;
     }
-
-    private static string WrapWithBackground(string content, string backgroundColor)
-        => $"[on {backgroundColor}]{content}[/]";
 
     private string RenderHighlightedCode(string content, string filePath)
     {

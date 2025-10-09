@@ -78,7 +78,7 @@ public class DiffRenderer
                 {
                     '+' => WrapWithBackground($"[white]+[/] {HighlightCode(code, languageId)}", AdditionBackground),
                     '-' => WrapWithBackground($"[white]-[/] {HighlightCode(code, languageId)}", DeletionBackground),
-                    _ => WrapWithBackground($"[dim] {ConsoleStyles.Escape(code)}[/]", ContextBackground)
+                    _ => WrapWithBackground($"[dim] [/] {HighlightCode(code, languageId)}", ContextBackground)
                 });
                 continue;
             }
