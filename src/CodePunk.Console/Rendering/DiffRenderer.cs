@@ -2,6 +2,7 @@ using System.Text;
 using CodePunk.Console.SyntaxHighlighting;
 using CodePunk.Console.Themes;
 using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Core.SyntaxHighlighting;
 using Spectre.Console;
 
 namespace CodePunk.Console.Rendering;
@@ -113,19 +114,7 @@ public class DiffRenderer
         if (string.IsNullOrWhiteSpace(path))
             return null;
 
-        var extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
-
-        return extension switch
-        {
-            ".cs" or ".csx" or ".razor" => "csharp",
-            ".js" or ".jsx" or ".mjs" or ".cjs" => "javascript",
-            ".sql" => "sql",
-            ".py" or ".pyw" => "python",
-            ".ts" or ".tsx" or ".cts" or ".mts" => "typescript",
-            ".go" => "go",
-            ".java" => "java",
-            _ => null
-        };
+        return LanguageDetector.FromPath(path);
     }
 
     private const string AdditionBackground = "cadetblue";

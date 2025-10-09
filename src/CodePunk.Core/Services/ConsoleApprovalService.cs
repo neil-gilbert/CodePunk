@@ -1,6 +1,7 @@
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models.FileEdit;
 using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Core.SyntaxHighlighting;
 using CodePunk.Core.SyntaxHighlighting.Tokenization;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
@@ -321,19 +322,7 @@ public class ConsoleApprovalService : IApprovalService
         if (string.IsNullOrWhiteSpace(filePath))
             return null;
 
-        var extension = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
-
-        return extension switch
-        {
-            ".cs" or ".csx" or ".razor" => "csharp",
-            ".js" or ".jsx" or ".mjs" or ".cjs" => "javascript",
-            ".sql" => "sql",
-            ".py" or ".pyw" => "python",
-            ".ts" or ".tsx" or ".cts" or ".mts" => "typescript",
-            ".go" => "go",
-            ".java" => "java",
-            _ => null
-        };
+        return LanguageDetector.FromPath(filePath);
     }
 
     private sealed class MarkupBufferTokenRenderer : ITokenRenderer

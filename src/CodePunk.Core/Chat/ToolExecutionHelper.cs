@@ -3,6 +3,8 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
 using Microsoft.Extensions.Logging;
+using CodePunk.Core.Extensions;
+using CodePunk.Core.SyntaxHighlighting;
 
 namespace CodePunk.Core.Chat;
 
@@ -84,6 +86,28 @@ internal static class ToolExecutionHelper
         }
     }
 
+    private static string BuildStatusPayload(ToolCallPart toolCall, ToolResultPart result)
+    {
+        var filePath = toolCall.GetFilePath();
+        var preview = result.Content.GetLinePreview(ToolResultPreviewLines);
+        var languageId = LanguageDetector.FromPath(filePath);
+
+        var payload = new ToolStatusPayload(
+            toolCall.Id,
+            toolCall.Name,
+            filePath,
+            preview.Preview,
+            preview.IsTruncated,
+            preview.OriginalLineCount,
+            preview.MaxLines,
+            result.IsError,
+            result.IsError ? null : languageId);
+
+        return ToolStatusSerializer.Serialize(payload);
+    }
+
+    private const int ToolResultPreviewLines = 20;
+
     /// <summary>
     /// Executes a single tool call with timeout and error handling
     /// </summary>
@@ -138,14 +162,14 @@ internal static class ToolExecutionHelper
     /// <summary>
     /// Executes tool calls with streaming status updates
     /// </summary>
-    public static async Task<(List<ToolResultPart> Results, List<string> StatusMessages, bool UserCancelled)> ExecuteToolCallsWithStatusAsync(
+    public static async Task<(List<ToolResultPart> Results, List<string> StatusPayloads, bool UserCancelled)> ExecuteToolCallsWithStatusAsync(
         IEnumerable<ToolCallPart> toolCalls,
         IToolService toolService,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
         var toolResultParts = new List<ToolResultPart>();
-        var statusMessages = new List<string>();
+        var statusPayloads = new List<string>();
 
         foreach (var toolCall in toolCalls)
         {
@@ -153,16 +177,16 @@ internal static class ToolExecutionHelper
                 toolCall, toolService, logger, cancellationToken);
 
             toolResultParts.Add(result);
-            statusMessages.Add(statusMessage);
+            statusPayloads.Add(statusMessage);
 
             // If user cancelled, stop processing further tools
             if (userCancelled)
             {
-                return (toolResultParts, statusMessages, true);
+                return (toolResultParts, statusPayloads, true);
             }
         }
 
-        return (toolResultParts, statusMessages, false);
+        return (toolResultParts, statusPayloads, false);
     }
     
     /// <summary>
@@ -189,9 +213,7 @@ internal static class ToolExecutionHelper
                 result.Content,
                 result.IsError);
 
-            var statusMessage = result.IsError
-                ? $"❌ {toolCall.Name}: {result.Content}"
-                : $"✅ {toolCall.Name}: {result.Content}";
+            var statusMessage = BuildStatusPayload(toolCall, toolResult);
 
             logger.LogInformation("Tool {ToolName} executed successfully", toolCall.Name);
             return (toolResult, statusMessage, result.UserCancelled);
@@ -205,7 +227,7 @@ internal static class ToolExecutionHelper
                 "Tool execution timed out after 2 minutes",
                 true);
 
-            var statusMessage = $"⏰ {toolCall.Name}: Timed out after 2 minutes";
+            var statusMessage = BuildStatusPayload(toolCall, toolResult);
             return (toolResult, statusMessage, false);
         }
         catch (Exception ex)
@@ -217,7 +239,7 @@ internal static class ToolExecutionHelper
                 $"Error executing tool: {ex.Message}",
                 true);
 
-            var statusMessage = $"❌ {toolCall.Name}: Error - {ex.Message}";
+            var statusMessage = BuildStatusPayload(toolCall, toolResult);
             return (toolResult, statusMessage, false);
         }
     }

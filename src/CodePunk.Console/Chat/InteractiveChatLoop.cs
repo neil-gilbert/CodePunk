@@ -50,7 +50,20 @@ public class InteractiveChatLoop
         await foreach (var chunk in _chatSession.SendMessageStreamAsync(message, cancellationToken))
         {
             _renderer.ProcessChunk(chunk);
-            if (!string.IsNullOrEmpty(chunk.ContentDelta)) sb.Append(chunk.ContentDelta);
+            if (ToolStatusSerializer.TryDeserialize(chunk.ContentDelta, out var status) && status != null)
+            {
+                sb.Append(status.IsError ? "❌" : "✅").Append(' ').AppendLine(status.ToolName);
+                if (!string.IsNullOrEmpty(status.FilePath))
+                    sb.AppendLine(status.FilePath);
+                if (!string.IsNullOrEmpty(status.Preview))
+                    sb.AppendLine(status.Preview);
+                if (status.IsTruncated)
+                    sb.AppendLine($"… showing first {status.MaxLines} lines of {status.OriginalLineCount}");
+            }
+            else if (!string.IsNullOrEmpty(chunk.ContentDelta))
+            {
+                sb.Append(chunk.ContentDelta);
+            }
         }
         _renderer.CompleteStreaming();
         return sb.ToString();
