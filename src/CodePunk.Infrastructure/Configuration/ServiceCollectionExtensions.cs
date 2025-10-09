@@ -64,6 +64,12 @@ public static class ServiceCollectionExtensions
         // Syntax highlighting
         services.AddSingleton<ISyntaxHighlighter, SyntaxHighlighter>();
         services.AddSingleton<ILanguageDefinition, CSharpLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, JavaScriptLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, SqlLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, PythonLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, TypeScriptLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, GoLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, JavaLanguageDefinition>();
 
         services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
 

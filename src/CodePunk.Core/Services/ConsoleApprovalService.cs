@@ -326,6 +326,12 @@ public class ConsoleApprovalService : IApprovalService
         return extension switch
         {
             ".cs" or ".csx" or ".razor" => "csharp",
+            ".js" or ".jsx" or ".mjs" or ".cjs" => "javascript",
+            ".sql" => "sql",
+            ".py" or ".pyw" => "python",
+            ".ts" or ".tsx" or ".cts" or ".mts" => "typescript",
+            ".go" => "go",
+            ".java" => "java",
             _ => null
         };
     }
