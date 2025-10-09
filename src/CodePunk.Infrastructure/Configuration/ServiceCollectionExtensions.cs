@@ -5,6 +5,9 @@ using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
 using CodePunk.Core.Providers.Anthropic;
 using CodePunk.Core.Chat;
+using CodePunk.Core.SyntaxHighlighting;
+using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Core.SyntaxHighlighting.Languages;
 using CodePunk.Data;
 using CodePunk.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +61,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApprovalService, ConsoleApprovalService>();
         services.AddScoped<IFileEditService, FileEditService>();
 
+        // Syntax highlighting
+        services.AddSingleton<ISyntaxHighlighter, SyntaxHighlighter>();
+        services.AddSingleton<ILanguageDefinition, CSharpLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, JavaScriptLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, SqlLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, PythonLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, TypeScriptLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, GoLanguageDefinition>();
+        services.AddSingleton<ILanguageDefinition, JavaLanguageDefinition>();
 
         services.Configure<ShellCommandOptions>(configuration.GetSection(ShellCommandOptions.SectionName));
 

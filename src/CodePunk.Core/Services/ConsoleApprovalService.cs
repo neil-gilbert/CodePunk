@@ -1,19 +1,31 @@
-using Microsoft.Extensions.Logging;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models.FileEdit;
+using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Core.SyntaxHighlighting;
+using CodePunk.Core.SyntaxHighlighting.Tokenization;
+using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using System.Text.RegularExpressions;
+using System.Text;
 
 namespace CodePunk.Core.Services;
 
 public class ConsoleApprovalService : IApprovalService
 {
     private readonly ILogger<ConsoleApprovalService> _logger;
+    private readonly ISyntaxHighlighter? _syntaxHighlighter;
     private bool _autoApproveSession = false;
 
-    public ConsoleApprovalService(ILogger<ConsoleApprovalService> logger)
+    private const string AdditionBackground = "cadetblue";
+    private const string DeletionBackground = "indianred";
+    private const string ContextBackground = "grey11";
+
+    public ConsoleApprovalService(
+        ILogger<ConsoleApprovalService> logger,
+        ISyntaxHighlighter? syntaxHighlighter = null)
     {
         _logger = logger;
+        _syntaxHighlighter = syntaxHighlighter;
     }
 
     public async Task<ApprovalResult> RequestApprovalAsync(
@@ -132,7 +144,7 @@ public class ConsoleApprovalService : IApprovalService
         return sections;
     }
 
-    private static void DisplaySideBySideDiff(List<DiffSection> sections, FileEditRequest request, DiffStats stats)
+    private void DisplaySideBySideDiff(List<DiffSection> sections, FileEditRequest request, DiffStats stats)
     {
         const int maxLinesTotal = 25;
 
@@ -155,18 +167,24 @@ public class ConsoleApprovalService : IApprovalService
         AnsiConsole.MarkupLine($"[dim]Updated {request.FilePath} with {stats.LinesAdded} additions and {stats.LinesRemoved} removals[/]");
 
         var isFileCreation = filteredLines.All(l => l.Type == DiffLineType.Addition);
-
-        // Calculate padding width for full-width background
         var availableWidth = Math.Max(80, System.Console.WindowWidth - 10);
+
+        string FormatLine(string numberMarkup, string indicatorMarkup, string bodyMarkup, string backgroundColor, int visibleLength)
+        {
+            var padding = Math.Max(0, availableWidth - visibleLength);
+            return $"[on {backgroundColor}]{numberMarkup} {indicatorMarkup} {bodyMarkup}{new string(' ', padding)}[/]";
+        }
+
+        static string FormatLineNumber(int lineNumber, string color)
+            => lineNumber >= 0 ? $"[{color}]{lineNumber,3}[/]" : $"[{color}]   [/]";
 
         if (isFileCreation)
         {
             var additionLines = filteredLines.Select(line =>
             {
-                var content = $"[cadetblue]{line.NewLineNum,3}[/] {Markup.Escape(line.Content)}";
-                var visibleLength = 4 + line.Content.Length; // line number + space + content
-                var padding = Math.Max(0, availableWidth - visibleLength);
-                return $"[on grey11]{content}{new string(' ', padding)}[/]";
+                var highlighted = RenderHighlightedCode(line.Content, request.FilePath);
+                var numberMarkup = FormatLineNumber(line.NewLineNum, AdditionBackground);
+                return FormatLine(numberMarkup, "[white]+[/]", highlighted, AdditionBackground, 6 + line.Content.Length);
             });
 
             var creationPanel = new Panel(new Markup(string.Join("\n", additionLines)))
@@ -184,30 +202,27 @@ public class ConsoleApprovalService : IApprovalService
 
         foreach (var line in filteredLines)
         {
-            string content;
-            int visibleLength;
-
             switch (line.Type)
             {
                 case DiffLineType.Context:
                     var lineNum = line.OldLineNum != -1 ? line.OldLineNum : line.NewLineNum;
-                    content = $"[dim]{lineNum,3}[/]   {Markup.Escape(line.Content)}";
-                    visibleLength = 6 + line.Content.Length;
+                    var contextNumber = FormatLineNumber(lineNum, "dim");
+                    var contextHighlighted = RenderHighlightedCode(line.Content, request.FilePath);
+                    unifiedLines.Add(FormatLine(contextNumber, "[dim] [/]", contextHighlighted, ContextBackground, 6 + line.Content.Length));
                     break;
                 case DiffLineType.Deletion:
-                    content = $"[indianred]{line.OldLineNum,3}[/] [white on indianred]- {Markup.Escape(line.Content)}[/]";
-                    visibleLength = 6 + line.Content.Length;
+                    var deleted = RenderHighlightedCode(line.Content, request.FilePath);
+                    var deletionNumber = FormatLineNumber(line.OldLineNum, DeletionBackground);
+                    unifiedLines.Add(FormatLine(deletionNumber, "[white]-[/]", deleted, DeletionBackground, 6 + line.Content.Length));
                     break;
                 case DiffLineType.Addition:
-                    content = $"[cadetblue]{line.NewLineNum,3}[/] [white on cadetblue]+ {Markup.Escape(line.Content)}[/]";
-                    visibleLength = 6 + line.Content.Length;
+                    var added = RenderHighlightedCode(line.Content, request.FilePath);
+                    var additionNumber = FormatLineNumber(line.NewLineNum, AdditionBackground);
+                    unifiedLines.Add(FormatLine(additionNumber, "[white]+[/]", added, AdditionBackground, 6 + line.Content.Length));
                     break;
                 default:
                     continue;
             }
-
-            var padding = Math.Max(0, availableWidth - visibleLength);
-            unifiedLines.Add($"[on grey11]{content}{new string(' ', padding)}[/]");
         }
 
         var diffPanel = new Panel(new Markup(string.Join("\n", unifiedLines)))
@@ -287,10 +302,66 @@ public class ConsoleApprovalService : IApprovalService
         return result;
     }
 
-    private static string TruncateLine(string line, int maxWidth)
+    private string RenderHighlightedCode(string content, string filePath)
     {
-        if (line.Length <= maxWidth) return line;
-        return line[..(maxWidth - 3)] + "...";
+        if (string.IsNullOrEmpty(content))
+            return string.Empty;
+
+        var languageId = InferLanguageId(filePath);
+        if (_syntaxHighlighter == null || string.IsNullOrEmpty(languageId))
+            return Markup.Escape(content);
+
+        var builder = new StringBuilder();
+        var renderer = new MarkupBufferTokenRenderer(builder);
+        _syntaxHighlighter.Highlight(content, languageId, renderer);
+        return builder.ToString();
+    }
+
+    private static string? InferLanguageId(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return null;
+
+        return LanguageDetector.FromPath(filePath);
+    }
+
+    private sealed class MarkupBufferTokenRenderer : ITokenRenderer
+    {
+        private static readonly IReadOnlyDictionary<TokenType, string> Colors = new Dictionary<TokenType, string>
+        {
+            [TokenType.Keyword] = "blue",
+            [TokenType.Type] = "cyan",
+            [TokenType.String] = "green",
+            [TokenType.Comment] = "grey",
+            [TokenType.Number] = "magenta",
+            [TokenType.Operator] = "yellow",
+            [TokenType.Punctuation] = "silver",
+            [TokenType.Preprocessor] = "purple",
+            [TokenType.Identifier] = "white",
+            [TokenType.Text] = "default"
+        };
+
+        private readonly StringBuilder _builder;
+
+        public MarkupBufferTokenRenderer(StringBuilder builder)
+        {
+            _builder = builder;
+        }
+
+        public void RenderToken(Token token)
+        {
+            var color = Colors.TryGetValue(token.Type, out var mapped) ? mapped : "default";
+            var escaped = Markup.Escape(token.Value);
+
+            if (color == "default")
+            {
+                _builder.Append(escaped);
+            }
+            else
+            {
+                _builder.Append('[').Append(color).Append(']').Append(escaped).Append("[/]");
+            }
+        }
     }
 
     private ApprovalResult HandleApproval(string filePath, bool approved)

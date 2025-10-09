@@ -1,6 +1,11 @@
 using CodePunk.Core.Chat;
 using CodePunk.Core.Models;
+using CodePunk.Core.Extensions;
+using CodePunk.Core.SyntaxHighlighting;
+using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Console.SyntaxHighlighting;
 using Spectre.Console;
+using System.Collections.Generic;
 using System.Text;
 using CodePunk.Console.Themes;
 
@@ -12,6 +17,7 @@ namespace CodePunk.Console.Rendering;
 public class StreamingResponseRenderer
 {
     private readonly IAnsiConsole _console;
+    private readonly ISyntaxHighlighter? _syntaxHighlighter;
     private readonly StringBuilder _buffer = new();
     private bool _isStreaming;
     private DateTime _startUtc;
@@ -22,11 +28,17 @@ public class StreamingResponseRenderer
     private int? _inputTokens;
     private int? _outputTokens;
     private decimal? _estimatedCost;
+    private readonly Dictionary<string, ToolCallPart> _toolCallCache = new();
+    private const int ToolResultPreviewLines = 20;
 
-    public StreamingResponseRenderer(IAnsiConsole console, StreamingRendererOptions? options = null)
+    public StreamingResponseRenderer(
+        IAnsiConsole console,
+        StreamingRendererOptions? options = null,
+        ISyntaxHighlighter? syntaxHighlighter = null)
     {
         _console = console;
         _options = options ?? new StreamingRendererOptions();
+        _syntaxHighlighter = syntaxHighlighter;
     }
 
     public void StartStreaming()
@@ -84,16 +96,32 @@ public class StreamingResponseRenderer
     public void ProcessChunk(ChatStreamChunk chunk)
     {
         if (!_isStreaming) return;
-        if (string.IsNullOrEmpty(chunk.ContentDelta)) return;
+
+        if (ToolStatusSerializer.TryDeserialize(chunk.ContentDelta, out var statusPayload) && statusPayload != null)
+        {
+            lock (_sync)
+            {
+                AppendStatusToBuffer(statusPayload);
+                UpdateUsageFromChunk(chunk);
+            }
+
+            RenderToolStatusPayload(statusPayload);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(chunk.ContentDelta))
+        {
+            lock (_sync)
+            {
+                UpdateUsageFromChunk(chunk);
+            }
+            return;
+        }
+
         lock (_sync)
         {
             _buffer.Append(chunk.ContentDelta);
-            if (chunk.InputTokens.HasValue)
-                _inputTokens = chunk.InputTokens;
-            if (chunk.OutputTokens.HasValue)
-                _outputTokens = chunk.OutputTokens;
-            if (chunk.EstimatedCost.HasValue)
-                _estimatedCost = chunk.EstimatedCost;
+            UpdateUsageFromChunk(chunk);
         }
         if (!_options.LiveEnabled)
         {
@@ -196,8 +224,30 @@ public class StreamingResponseRenderer
     {
         if (string.IsNullOrEmpty(content)) return;
         var lines = content.Replace("\r\n", "\n").Split('\n');
-        foreach (var line in lines)
+
+        for (int i = 0; i < lines.Length; i++)
         {
+            var line = lines[i];
+
+            // Detect code blocks
+            if (line.StartsWith("```"))
+            {
+                var language = line.Length > 3 ? line[3..].Trim() : "";
+                var codeLines = new List<string>();
+
+                // Collect code block lines
+                i++;
+                while (i < lines.Length && !lines[i].StartsWith("```"))
+                {
+                    codeLines.Add(lines[i]);
+                    i++;
+                }
+
+                RenderCodeBlock(string.Join("\n", codeLines), language);
+                continue;
+            }
+
+            // Markdown rendering
             if (line.StartsWith("### "))
                 _console.MarkupLine($"[bold]{ConsoleStyles.Escape(line[4..])}[/]");
             else if (line.StartsWith("## "))
@@ -211,8 +261,24 @@ public class StreamingResponseRenderer
         }
     }
 
+    private void RenderCodeBlock(string code, string language)
+    {
+        if (_syntaxHighlighter != null && !string.IsNullOrWhiteSpace(language))
+        {
+            var renderer = new SpectreTokenRenderer(_console);
+            _syntaxHighlighter.Highlight(code, language, renderer);
+        }
+        else
+        {
+            // Fallback: render as plain text with grey color
+            var escaped = ConsoleStyles.Escape(code);
+            _console.MarkupLine($"[grey]{escaped}[/]");
+        }
+    }
+
     private void RenderToolCall(ToolCallPart toolCall)
     {
+        _toolCallCache[toolCall.Id] = toolCall;
         _console.MarkupLine("[purple]🔧 Tool Call[/]");
         _console.MarkupLine($"[dim]Id: {ConsoleStyles.Escape(toolCall.Id)}  Name: {ConsoleStyles.Escape(toolCall.Name)}[/]");
         var args = toolCall.Arguments.ToString();
@@ -227,12 +293,39 @@ public class StreamingResponseRenderer
         var icon = toolResult.IsError ? "❌" : "✅";
         _console.MarkupLine($"[{color}]{icon} Tool Result[/]");
         _console.MarkupLine($"[dim]Tool Call ID: {ConsoleStyles.Escape(toolResult.ToolCallId)}[/]");
-        var content = toolResult.Content;
-        if (content.Length > 1000) content = content[..1000] + "\n[... truncated ...]";
+
         if (toolResult.IsError)
-            _console.MarkupLine($"[red]{ConsoleStyles.Escape(content)}[/]");
-        else
-            _console.WriteLine(content);
+        {
+            var escaped = ConsoleStyles.Escape(toolResult.Content);
+            _console.MarkupLine($"[red]{escaped}[/]");
+            _console.WriteLine();
+            return;
+        }
+
+        _toolCallCache.TryGetValue(toolResult.ToolCallId, out var toolCall);
+        if (toolCall != null)
+        {
+            _toolCallCache.Remove(toolResult.ToolCallId);
+        }
+        var path = toolCall?.GetFilePath();
+        if (!string.IsNullOrEmpty(path))
+        {
+            _console.MarkupLine($"[dim]File: {ConsoleStyles.Escape(path)}[/]");
+        }
+
+        var preview = toolResult.Content.GetLinePreview(ToolResultPreviewLines);
+        if (!string.IsNullOrEmpty(preview.Preview))
+        {
+            var markup = BuildHighlightedMarkup(preview.Preview, path);
+            _console.MarkupLine(markup);
+        }
+
+        if (preview.IsTruncated)
+        {
+            var footer = $"… showing first {preview.MaxLines} lines of {preview.OriginalLineCount}. Use read_file with offset/limit to view more.";
+            _console.MarkupLine(ConsoleStyles.Dim(footer));
+        }
+
         _console.WriteLine();
     }
 
@@ -254,5 +347,94 @@ public class StreamingResponseRenderer
         return new Panel(new Markup(body))
             .Header(ConsoleStyles.PanelTitle(title))
             .RoundedBorder();
+    }
+
+    private void RenderToolStatusPayload(ToolStatusPayload payload)
+    {
+        var color = payload.IsError ? "red" : "green";
+        var icon = payload.IsError ? "❌" : "✅";
+        _console.MarkupLine($"[{color}]{icon} {payload.ToolName}[/]");
+
+        if (!string.IsNullOrEmpty(payload.FilePath))
+        {
+            _console.MarkupLine($"[dim]{ConsoleStyles.Escape(payload.FilePath)}[/]");
+        }
+
+        if (!string.IsNullOrEmpty(payload.Preview))
+        {
+            if (payload.IsError)
+            {
+                _console.MarkupLine($"[red]{ConsoleStyles.Escape(payload.Preview)}[/]");
+            }
+            else
+            {
+                var markup = BuildHighlightedMarkup(payload.Preview, payload.FilePath, payload.LanguageId);
+                _console.MarkupLine(markup);
+            }
+        }
+
+        if (payload.IsTruncated)
+        {
+            var footer = payload.IsError
+                ? $"… output truncated after {payload.MaxLines} lines."
+                : $"… showing first {payload.MaxLines} lines of {payload.OriginalLineCount}. Use read_file with offset/limit to view more.";
+            _console.MarkupLine(ConsoleStyles.Dim(footer));
+        }
+
+        _console.WriteLine();
+    }
+
+    private void AppendStatusToBuffer(ToolStatusPayload payload)
+    {
+        var icon = payload.IsError ? "❌" : "✅";
+        _buffer.Append(icon).Append(' ').Append(payload.ToolName).AppendLine();
+
+        if (!string.IsNullOrEmpty(payload.FilePath))
+        {
+            _buffer.Append(payload.FilePath).AppendLine();
+        }
+
+        if (!string.IsNullOrEmpty(payload.Preview))
+        {
+            _buffer.Append(payload.Preview).AppendLine();
+        }
+
+        if (payload.IsTruncated)
+        {
+            _buffer.Append("… (")
+                .Append(payload.MaxLines)
+                .Append('/')
+                .Append(payload.OriginalLineCount)
+                .Append(')')
+                .AppendLine();
+        }
+    }
+
+    private void UpdateUsageFromChunk(ChatStreamChunk chunk)
+    {
+        if (chunk.InputTokens.HasValue)
+            _inputTokens = chunk.InputTokens;
+        if (chunk.OutputTokens.HasValue)
+            _outputTokens = chunk.OutputTokens;
+        if (chunk.EstimatedCost.HasValue)
+            _estimatedCost = chunk.EstimatedCost;
+    }
+
+    private string BuildHighlightedMarkup(string content, string? filePath, string? languageId = null)
+    {
+        if (string.IsNullOrEmpty(content))
+            return string.Empty;
+
+        var language = languageId ?? LanguageDetector.FromPath(filePath);
+
+        if (_syntaxHighlighter != null && !string.IsNullOrEmpty(language))
+        {
+            var builder = new StringBuilder(content.Length + 64);
+            var renderer = new MarkupTokenRenderer(builder);
+            _syntaxHighlighter.Highlight(content, language, renderer);
+            return builder.ToString();
+        }
+
+        return ConsoleStyles.Escape(content);
     }
 }
