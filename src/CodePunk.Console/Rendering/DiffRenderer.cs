@@ -117,7 +117,7 @@ public class DiffRenderer
         return LanguageDetector.FromPath(path);
     }
 
-    private const string AdditionBackground = "cadetblue";
-    private const string DeletionBackground = "indianred";
+    private const string AdditionBackground = "green3";
+    private const string DeletionBackground = "red3";
     private const string ContextBackground = "grey11";
 }
