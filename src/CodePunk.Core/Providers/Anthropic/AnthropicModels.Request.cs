@@ -16,7 +16,7 @@ public class AnthropicRequest
     public double Temperature { get; set; }
 
     [JsonPropertyName("system")]
-    public string? System { get; set; }
+    public List<AnthropicSystemContent>? System { get; set; }
 
     [JsonPropertyName("messages")]
     public List<AnthropicMessage> Messages { get; set; } = new();
@@ -108,6 +108,9 @@ public class AnthropicResponse
 
     [JsonPropertyName("usage")]
     public AnthropicUsage? Usage { get; set; }
+
+    [JsonPropertyName("cache_control")]
+    public AnthropicCacheControlResponse? CacheControl { get; set; }
 }
 
 public class AnthropicContent
@@ -126,6 +129,9 @@ public class AnthropicContent
 
     [JsonPropertyName("input")]
     public object? Input { get; set; }
+
+    [JsonPropertyName("cache_control")]
+    public AnthropicCacheControlResponse? CacheControl { get; set; }
 }
 
 public class AnthropicUsage
@@ -168,4 +174,40 @@ public class AnthropicDelta
     
     [JsonPropertyName("stop_reason")]
     public string? StopReason { get; set; }
+}
+
+public class AnthropicSystemContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("cache_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CacheId { get; set; }
+
+    [JsonPropertyName("cache_control")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AnthropicCacheControlRequest? CacheControl { get; set; }
+}
+
+public class AnthropicCacheControlRequest
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "ephemeral";
+}
+
+public class AnthropicCacheControlResponse
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("expires_at")]
+    public string? ExpiresAt { get; set; }
 }

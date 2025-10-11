@@ -1,5 +1,7 @@
-using System.Net.Http.Json;
+using System.Globalization;
+using System.Linq;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -148,6 +150,7 @@ public class AnthropicProvider : ILLMProvider
         
         LLMUsage? tokenUsage = null;
         var toolCallBuilders = new Dictionary<int, (ToolCall toolCall, StringBuilder jsonBuilder)>();
+        var cacheInfoEmitted = false;
 
         while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
         {
@@ -197,6 +200,22 @@ public class AnthropicProvider : ILLMProvider
                 }
 
                 if (streamResponse == null) continue;
+
+                if (!cacheInfoEmitted)
+                {
+                    var cacheInfo = ConvertCacheControl(streamResponse.Message?.CacheControl)
+                        ?? ConvertCacheControl(streamResponse.ContentBlock?.CacheControl);
+
+                    if (cacheInfo != null)
+                    {
+                        cacheInfoEmitted = true;
+                        yield return new LLMStreamChunk
+                        {
+                            PromptCache = cacheInfo,
+                            IsComplete = false
+                        };
+                    }
+                }
 
                 switch (streamResponse.Type)
                 {
@@ -351,13 +370,14 @@ public class AnthropicProvider : ILLMProvider
     {
         var (messages, systemPrompt) = ConvertMessages(request.Messages, request.SystemPrompt);
         var tools = ConvertTools(request.Tools);
+        var systemContent = BuildSystemContent(request, systemPrompt);
 
         return new AnthropicRequest
         {
             Model = request.ModelId,
             MaxTokens = request.MaxTokens,
             Temperature = request.Temperature,
-            System = systemPrompt,
+            System = systemContent,
             Messages = messages,
             Tools = tools?.Count > 0 ? tools : null
         };
@@ -381,6 +401,39 @@ public class AnthropicProvider : ILLMProvider
         }
         
         return anthropicTools;
+    }
+
+    private List<AnthropicSystemContent>? BuildSystemContent(LLMRequest request, string? systemPrompt)
+    {
+        if (!string.IsNullOrEmpty(request.SystemPromptCacheId))
+        {
+            return new List<AnthropicSystemContent>
+            {
+                new AnthropicSystemContent
+                {
+                    Type = "cache",
+                    CacheId = request.SystemPromptCacheId
+                }
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            return null;
+        }
+
+        var entry = new AnthropicSystemContent
+        {
+            Type = "text",
+            Text = systemPrompt
+        };
+
+        if (request.UseEphemeralCache)
+        {
+            entry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral" };
+        }
+
+        return new List<AnthropicSystemContent> { entry };
     }
 
     private (List<AnthropicMessage>, string?) ConvertMessages(IReadOnlyList<Message> messages, string? systemPrompt)
@@ -505,6 +558,9 @@ public class AnthropicProvider : ILLMProvider
             _logger.LogInformation("Found tool calls: {ToolNames}", string.Join(", ", toolCalls.Select(t => t.Name)));
         }
 
+        var cacheInfo = ConvertCacheControl(response.CacheControl)
+            ?? response.Content.Select(c => ConvertCacheControl(c.CacheControl)).FirstOrDefault(info => info != null);
+
         return new LLMResponse
         {
             Content = content,
@@ -514,7 +570,8 @@ public class AnthropicProvider : ILLMProvider
                 InputTokens = response.Usage.InputTokens,
                 OutputTokens = response.Usage.OutputTokens
             } : null,
-            FinishReason = ConvertFinishReason(response.StopReason)
+            FinishReason = ConvertFinishReason(response.StopReason),
+            PromptCache = cacheInfo
         };
     }
 
@@ -527,6 +584,28 @@ public class AnthropicProvider : ILLMProvider
             "tool_use" => LLMFinishReason.ToolCall,
             "stop_sequence" => LLMFinishReason.Stop,
             _ => LLMFinishReason.Stop
+        };
+    }
+
+    private LLMPromptCacheInfo? ConvertCacheControl(AnthropicCacheControlResponse? cacheControl)
+    {
+        if (cacheControl?.Id == null)
+        {
+            return null;
+        }
+
+        DateTimeOffset? expiresAt = null;
+        if (!string.IsNullOrEmpty(cacheControl.ExpiresAt) &&
+            DateTimeOffset.TryParse(cacheControl.ExpiresAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            expiresAt = parsed.ToUniversalTime();
+        }
+
+        return new LLMPromptCacheInfo
+        {
+            CacheId = cacheControl.Id,
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = expiresAt
         };
     }
 

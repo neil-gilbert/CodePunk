@@ -1,5 +1,6 @@
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Configuration;
+using CodePunk.Core.Caching;
 using CodePunk.Core.Services;
 using CodePunk.Core.Tools;
 using CodePunk.Core.Providers;
@@ -60,6 +61,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiffService, DiffService>();
         services.AddScoped<IApprovalService, ConsoleApprovalService>();
         services.AddScoped<IFileEditService, FileEditService>();
+
+        services.Configure<PromptCacheOptions>(configuration.GetSection("PromptCache"));
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IPromptCacheKeyBuilder, DefaultPromptCacheKeyBuilder>();
+        services.AddSingleton<IPromptCacheStore, InMemoryPromptCacheStore>();
+        services.AddSingleton<IPromptCache, PromptCache>();
 
         // Syntax highlighting
         services.AddSingleton<ISyntaxHighlighter, SyntaxHighlighter>();
