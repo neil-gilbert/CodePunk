@@ -1,5 +1,7 @@
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Caching;
 using CodePunk.Core.Models;
+using Microsoft.Extensions.Options;
 
 namespace CodePunk.Core.Services;
 
@@ -28,14 +30,23 @@ public class LLMService : ILLMService
     private readonly ILLMProviderFactory _providerFactory;
     private readonly IPromptProvider _promptProvider;
     private readonly IToolService _toolService;
+    private readonly IPromptCache? _promptCache;
+    private readonly PromptCacheOptions _cacheOptions;
     private string? _overrideProvider;
     private string? _overrideModel;
 
-    public LLMService(ILLMProviderFactory providerFactory, IPromptProvider promptProvider, IToolService toolService)
+    public LLMService(
+        ILLMProviderFactory providerFactory,
+        IPromptProvider promptProvider,
+        IToolService toolService,
+        IPromptCache? promptCache = null,
+        IOptions<PromptCacheOptions>? cacheOptions = null)
     {
         _providerFactory = providerFactory;
         _promptProvider = promptProvider;
         _toolService = toolService;
+        _promptCache = promptCache;
+        _cacheOptions = cacheOptions?.Value ?? new PromptCacheOptions();
     }
 
     public IReadOnlyList<ILLMProvider> GetProviders()
@@ -56,12 +67,12 @@ public class LLMService : ILLMService
     public ILLMProvider GetDefaultProvider() => _providerFactory.GetProvider();
 
     public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) =>
-        ResolveProvider().SendAsync(request, cancellationToken);
+        SendWithCacheAsync(ResolveProvider(), request, cancellationToken);
 
     public Task<LLMResponse> SendAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default)
     {
         var provider = _providerFactory.GetProvider(providerName);
-        return provider.SendAsync(request, cancellationToken);
+        return SendWithCacheAsync(provider, request, cancellationToken);
     }
 
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) =>
@@ -77,7 +88,7 @@ public class LLMService : ILLMService
     {
         var provider = ResolveProvider();
         var request = ConvertMessagesToRequest(conversationHistory, provider.Name);
-        var response = await provider.SendAsync(request, cancellationToken);
+        var response = await SendWithCacheAsync(provider, request, cancellationToken);
         return ConvertResponseToMessage(response, conversationHistory.Last().SessionId, provider.Name);
     }
 
@@ -126,5 +137,24 @@ public class LLMService : ILLMService
     {
         var parts = new List<MessagePart> { new TextPart(response.Content) };
         return Message.Create(sessionId, MessageRole.Assistant, parts, null, providerName);
+    }
+
+    private async Task<LLMResponse> SendWithCacheAsync(ILLMProvider provider, LLMRequest request, CancellationToken cancellationToken)
+    {
+        if (_promptCache == null || !_cacheOptions.Enabled)
+        {
+            return await provider.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+
+        var context = new PromptCacheContext(provider.Name, request);
+        var cached = await _promptCache.TryGetAsync(context, cancellationToken).ConfigureAwait(false);
+        if (cached != null)
+        {
+            return cached.Response;
+        }
+
+        var response = await provider.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        await _promptCache.StoreAsync(context, response, cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
