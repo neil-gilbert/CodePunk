@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Caching;
 using CodePunk.Core.Models;
@@ -35,6 +36,30 @@ public class LLMServicePromptCacheTests
         provider.SendCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task SendMessageStreamAsync_UsesCache_OnRepeatedRequests()
+    {
+        var provider = new TestProvider();
+        var factory = new TestProviderFactory(provider);
+        var promptProvider = new TestPromptProvider();
+        var toolService = new TestToolService();
+        var cacheOptions = Options.Create(new PromptCacheOptions { Enabled = true, DefaultTtl = TimeSpan.FromMinutes(30) });
+        var timeProvider = new TestTimeProvider();
+        var cache = new PromptCache(new InMemoryPromptCacheStore(timeProvider), new DefaultPromptCacheKeyBuilder(), cacheOptions, timeProvider);
+        var service = new LLMService(factory, promptProvider, toolService, cache, cacheOptions);
+        var messages = new List<Message>
+        {
+            Message.Create("session", MessageRole.User, new[] { new TextPart("Hello there") })
+        };
+
+        var first = await CollectStreamAsync(service.SendMessageStreamAsync(messages, CancellationToken.None));
+        var second = await CollectStreamAsync(service.SendMessageStreamAsync(messages, CancellationToken.None));
+
+        first.Should().Be("hello world");
+        second.Should().Be("hello world");
+        provider.StreamCount.Should().Be(1);
+    }
+
     private static LLMRequest BuildRequest()
     {
         return new LLMRequest
@@ -51,6 +76,7 @@ public class LLMServicePromptCacheTests
     private sealed class TestProvider : ILLMProvider
     {
         public int SendCount { get; private set; }
+        public int StreamCount { get; private set; }
 
         public string Name => "Anthropic";
 
@@ -67,8 +93,16 @@ public class LLMServicePromptCacheTests
 
         public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            StreamCount++;
             await Task.CompletedTask;
-            yield break;
+            yield return new LLMStreamChunk { Content = "hello ", IsComplete = false };
+            yield return new LLMStreamChunk
+            {
+                Content = "world",
+                IsComplete = true,
+                Usage = new LLMUsage { InputTokens = 4, OutputTokens = 6, EstimatedCost = 0.01m },
+                FinishReason = LLMFinishReason.Stop
+            };
         }
     }
 
@@ -103,5 +137,19 @@ public class LLMServicePromptCacheTests
             Task.FromResult(new ToolResult { Content = string.Empty });
 
         public IReadOnlyList<LLMTool> GetLLMTools() => Array.Empty<LLMTool>();
+    }
+
+    private static async Task<string> CollectStreamAsync(IAsyncEnumerable<LLMStreamChunk> stream)
+    {
+        var builder = new StringBuilder();
+        await foreach (var chunk in stream)
+        {
+            if (!string.IsNullOrEmpty(chunk.Content))
+            {
+                builder.Append(chunk.Content);
+            }
+        }
+
+        return builder.ToString();
     }
 }

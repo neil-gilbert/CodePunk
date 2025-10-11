@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Text;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Caching;
 using CodePunk.Core.Models;
@@ -76,12 +78,12 @@ public class LLMService : ILLMService
     }
 
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) =>
-        ResolveProvider().StreamAsync(request, cancellationToken);
+        StreamWithCacheAsync(ResolveProvider(), request, cancellationToken);
 
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default)
     {
         var provider = _providerFactory.GetProvider(providerName);
-        return provider.StreamAsync(request, cancellationToken);
+        return StreamWithCacheAsync(provider, request, cancellationToken);
     }
 
     public async Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default)
@@ -96,7 +98,7 @@ public class LLMService : ILLMService
     {
         var provider = ResolveProvider();
         var request = ConvertMessagesToRequest(conversationHistory, provider.Name);
-        return provider.StreamAsync(request, cancellationToken);
+        return StreamWithCacheAsync(provider, request, cancellationToken);
     }
 
     public void SetSessionDefaults(string? providerName, string? modelId)
@@ -156,5 +158,94 @@ public class LLMService : ILLMService
         var response = await provider.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await _promptCache.StoreAsync(context, response, cancellationToken).ConfigureAwait(false);
         return response;
+    }
+
+    private async IAsyncEnumerable<LLMStreamChunk> StreamWithCacheAsync(
+        ILLMProvider provider,
+        LLMRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (_promptCache == null || !_cacheOptions.Enabled)
+        {
+            await foreach (var chunk in provider.StreamAsync(request, cancellationToken))
+            {
+                yield return chunk;
+            }
+            yield break;
+        }
+
+        var context = new PromptCacheContext(provider.Name, request);
+        var cached = await _promptCache.TryGetAsync(context, cancellationToken).ConfigureAwait(false);
+        if (cached != null)
+        {
+            foreach (var chunk in ReplayCachedResponse(cached.Response))
+            {
+                yield return chunk;
+            }
+            yield break;
+        }
+
+        var contentBuilder = new StringBuilder();
+        var toolCalls = new List<ToolCall>();
+        LLMUsage? usage = null;
+        var finishReason = LLMFinishReason.Stop;
+
+        await foreach (var chunk in provider.StreamAsync(request, cancellationToken))
+        {
+            if (!string.IsNullOrEmpty(chunk.Content))
+            {
+                contentBuilder.Append(chunk.Content);
+            }
+
+            if (chunk.ToolCall != null)
+            {
+                toolCalls.Add(chunk.ToolCall);
+            }
+
+            if (chunk.Usage != null)
+            {
+                usage = chunk.Usage;
+            }
+
+            if (chunk.FinishReason.HasValue)
+            {
+                finishReason = chunk.FinishReason.Value;
+            }
+
+            yield return chunk;
+        }
+
+        var response = new LLMResponse
+        {
+            Content = contentBuilder.ToString(),
+            ToolCalls = toolCalls.Count > 0 ? toolCalls.ToArray() : null,
+            Usage = usage,
+            FinishReason = finishReason
+        };
+
+        await _promptCache.StoreAsync(context, response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IEnumerable<LLMStreamChunk> ReplayCachedResponse(LLMResponse response)
+    {
+        if (response.ToolCalls != null)
+        {
+            foreach (var toolCall in response.ToolCalls)
+            {
+                yield return new LLMStreamChunk
+                {
+                    ToolCall = toolCall,
+                    IsComplete = false
+                };
+            }
+        }
+
+        yield return new LLMStreamChunk
+        {
+            Content = response.Content ?? string.Empty,
+            Usage = response.Usage,
+            FinishReason = response.FinishReason,
+            IsComplete = true
+        };
     }
 }
