@@ -8,7 +8,7 @@ namespace CodePunk.Core.Caching;
 public sealed record PromptCacheContext(string ProviderName, LLMRequest Request);
 
 /// <summary>
-/// Represents a cache key for prompt responses.
+/// Represents a cache key for provider-side prompt caches.
 /// </summary>
 public readonly record struct PromptCacheKey(string Value)
 {
@@ -16,31 +16,33 @@ public readonly record struct PromptCacheKey(string Value)
 }
 
 /// <summary>
-/// Represents a stored prompt cache entry.
+/// Represents a stored prompt cache entry referencing a provider cache identifier.
 /// </summary>
 public sealed record PromptCacheEntry(
     PromptCacheKey Key,
-    PromptCacheContext Context,
-    LLMResponse Response,
+    bool ProviderSupportsCache,
+    LLMPromptCacheInfo? CacheInfo,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ExpiresAt)
 {
-    public bool IsExpired(DateTimeOffset now) => ExpiresAt.HasValue && now >= ExpiresAt.Value;
+    public bool IsExpired(DateTimeOffset timestamp) =>
+        ExpiresAt.HasValue && timestamp >= ExpiresAt.Value;
 }
-
-/// <summary>
-/// Represents a prompt cache lookup result.
-/// </summary>
-public sealed record PromptCacheResult(PromptCacheKey Key, LLMResponse Response);
 
 /// <summary>
 /// Defines prompt cache orchestration.
 /// </summary>
 public interface IPromptCache
 {
-    Task<PromptCacheResult?> TryGetAsync(PromptCacheContext context, CancellationToken cancellationToken = default);
+    Task<PromptCacheEntry?> TryGetAsync(PromptCacheContext context, CancellationToken cancellationToken = default);
 
-    Task StoreAsync(PromptCacheContext context, LLMResponse response, CancellationToken cancellationToken = default);
+    Task StoreAsync(
+        PromptCacheContext context,
+        bool providerSupportsCache,
+        LLMPromptCacheInfo? cacheInfo,
+        CancellationToken cancellationToken = default);
+
+    Task InvalidateAsync(PromptCacheContext context, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -59,4 +61,6 @@ public interface IPromptCacheStore
     Task<PromptCacheEntry?> GetAsync(PromptCacheKey key, CancellationToken cancellationToken);
 
     Task SetAsync(PromptCacheEntry entry, CancellationToken cancellationToken);
+
+    Task RemoveAsync(PromptCacheKey key, CancellationToken cancellationToken);
 }

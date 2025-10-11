@@ -74,6 +74,8 @@ public record LLMRequest
     public int MaxTokens { get; init; } = 1000;
     public double Temperature { get; init; } = 0.7;
     public double TopP { get; init; } = 1.0;
+    public bool UseEphemeralCache { get; init; }
+    public string? SystemPromptCacheId { get; init; }
 }
 
 /// <summary>
@@ -85,6 +87,7 @@ public record LLMResponse
     public IReadOnlyList<ToolCall>? ToolCalls { get; init; }
     public LLMUsage? Usage { get; init; }
     public LLMFinishReason FinishReason { get; init; } = LLMFinishReason.Stop;
+    public LLMPromptCacheInfo? PromptCache { get; init; }
 }
 
 /// <summary>
@@ -97,6 +100,7 @@ public record LLMStreamChunk
     public LLMUsage? Usage { get; init; }
     public LLMFinishReason? FinishReason { get; init; }
     public bool IsComplete { get; init; }
+    public LLMPromptCacheInfo? PromptCache { get; init; }
 }
 
 /// <summary>
@@ -140,4 +144,13 @@ public enum LLMFinishReason
     ToolCall,
     ContentFilter,
     Error
+}
+/// <summary>
+/// Information about provider-side prompt cache entries.
+/// </summary>
+public record LLMPromptCacheInfo
+{
+    public required string CacheId { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
 }

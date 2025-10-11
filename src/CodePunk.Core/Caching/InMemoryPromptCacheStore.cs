@@ -36,4 +36,10 @@ public sealed class InMemoryPromptCacheStore : IPromptCacheStore
         _entries[entry.Key.Value] = entry;
         return Task.CompletedTask;
     }
+
+    public Task RemoveAsync(PromptCacheKey key, CancellationToken cancellationToken)
+    {
+        _entries.TryRemove(key.Value, out _);
+        return Task.CompletedTask;
+    }
 }

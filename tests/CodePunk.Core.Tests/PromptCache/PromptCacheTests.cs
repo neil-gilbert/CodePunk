@@ -16,19 +16,27 @@ namespace CodePunk.Core.Tests.Caching;
 public class PromptCacheTests
 {
     [Fact]
-    public async Task TryGetAsync_ReturnsStoredResponse_WhenEntryPresent()
+    public async Task TryGetAsync_ReturnsStoredEntry_WhenPresent()
     {
         var context = BuildContext();
-        var response = new LLMResponse { Content = "cached" };
         var store = new InMemoryPromptCacheStore();
         var options = Options.Create(new PromptCacheOptions { Enabled = true, DefaultTtl = TimeSpan.FromMinutes(5) });
         var cache = new PromptCache(store, new DefaultPromptCacheKeyBuilder(), options);
 
-        await cache.StoreAsync(context, response, CancellationToken.None);
+        var metadata = new LLMPromptCacheInfo
+        {
+            CacheId = "cache:test",
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10)
+        };
+
+        await cache.StoreAsync(context, true, metadata, CancellationToken.None);
         var result = await cache.TryGetAsync(context, CancellationToken.None);
 
         result.Should().NotBeNull();
-        result!.Response.Content.Should().Be("cached");
+        result!.ProviderSupportsCache.Should().BeTrue();
+        result.CacheInfo.Should().NotBeNull();
+        result.CacheInfo!.CacheId.Should().Be("cache:test");
     }
 
     [Fact]
@@ -39,7 +47,12 @@ public class PromptCacheTests
         var options = Options.Create(new PromptCacheOptions { Enabled = false, DefaultTtl = TimeSpan.FromMinutes(5) });
         var cache = new PromptCache(store, new DefaultPromptCacheKeyBuilder(), options);
 
-        await cache.StoreAsync(context, new LLMResponse { Content = "value" }, CancellationToken.None);
+        await cache.StoreAsync(context, true, new LLMPromptCacheInfo
+        {
+            CacheId = "cache:new",
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1)
+        }, CancellationToken.None);
         var setResult = await cache.TryGetAsync(context, CancellationToken.None);
 
         setResult.Should().BeNull();
@@ -50,13 +63,17 @@ public class PromptCacheTests
     public async Task TryGetAsync_ReturnsNull_WhenEntryExpired()
     {
         var context = BuildContext();
-        var response = new LLMResponse { Content = "stale" };
         var time = new TestTimeProvider();
         var store = new InMemoryPromptCacheStore(time);
         var options = Options.Create(new PromptCacheOptions { Enabled = true, DefaultTtl = TimeSpan.FromMinutes(1) });
         var cache = new PromptCache(store, new DefaultPromptCacheKeyBuilder(), options, time);
 
-        await cache.StoreAsync(context, response, CancellationToken.None);
+        await cache.StoreAsync(context, true, new LLMPromptCacheInfo
+        {
+            CacheId = "cache:stale",
+            CreatedAt = time.GetUtcNow(),
+            ExpiresAt = null
+        }, CancellationToken.None);
         time.Advance(TimeSpan.FromMinutes(2));
         var result = await cache.TryGetAsync(context, CancellationToken.None);
 
@@ -103,6 +120,12 @@ public class PromptCacheTests
         public Task SetAsync(PromptCacheEntry entry, CancellationToken cancellationToken)
         {
             SavedEntries[entry.Key.Value] = entry;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(PromptCacheKey key, CancellationToken cancellationToken)
+        {
+            SavedEntries.TryRemove(key.Value, out _);
             return Task.CompletedTask;
         }
     }

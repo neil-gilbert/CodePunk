@@ -25,7 +25,7 @@ public sealed class PromptCache : IPromptCache
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public async Task<PromptCacheResult?> TryGetAsync(PromptCacheContext context, CancellationToken cancellationToken = default)
+    public async Task<PromptCacheEntry?> TryGetAsync(PromptCacheContext context, CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
         {
@@ -42,13 +42,18 @@ public sealed class PromptCache : IPromptCache
         var now = _timeProvider.GetUtcNow();
         if (entry.IsExpired(now))
         {
+            await _store.RemoveAsync(key, cancellationToken).ConfigureAwait(false);
             return null;
         }
 
-        return new PromptCacheResult(key, entry.Response);
+        return entry;
     }
 
-    public async Task StoreAsync(PromptCacheContext context, LLMResponse response, CancellationToken cancellationToken = default)
+    public async Task StoreAsync(
+        PromptCacheContext context,
+        bool providerSupportsCache,
+        LLMPromptCacheInfo? cacheInfo,
+        CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
         {
@@ -57,14 +62,20 @@ public sealed class PromptCache : IPromptCache
 
         var key = _keyBuilder.Build(context);
         var now = _timeProvider.GetUtcNow();
-        DateTimeOffset? expiresAt = null;
 
-        if (_options.DefaultTtl > TimeSpan.Zero)
+        DateTimeOffset? expiresAt = cacheInfo?.ExpiresAt;
+        if (!expiresAt.HasValue && _options.DefaultTtl > TimeSpan.Zero)
         {
             expiresAt = now.Add(_options.DefaultTtl);
         }
 
-        var entry = new PromptCacheEntry(key, context, response, now, expiresAt);
+        var entry = new PromptCacheEntry(key, providerSupportsCache, cacheInfo, now, expiresAt);
         await _store.SetAsync(entry, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task InvalidateAsync(PromptCacheContext context, CancellationToken cancellationToken = default)
+    {
+        var key = _keyBuilder.Build(context);
+        await _store.RemoveAsync(key, cancellationToken).ConfigureAwait(false);
     }
 }
