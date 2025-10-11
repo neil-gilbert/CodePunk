@@ -1,6 +1,7 @@
 using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
+using CodePunk.Console.Rendering.Animations;
 using CodePunk.Console.Stores;
 using CodePunk.Core.Chat;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using CodePunk.Console.Planning;
 using CodePunk.Console.Providers;
 using Microsoft.Extensions.Logging;
+using System;
 using CodePunk.Core.SyntaxHighlighting.Abstractions;
 
 namespace CodePunk.Console.Configuration;
@@ -18,6 +20,12 @@ public static class ConsoleServiceCollectionExtensions
     public static IServiceCollection AddCodePunkConsole(this IServiceCollection services, IConfiguration? configuration = null)
     {
         services.AddSingleton<IAnsiConsole>(AnsiConsole.Console);
+        services.AddSingleton(sp =>
+        {
+            var env = Environment.GetEnvironmentVariable("CODEPUNK_ANIMATE");
+            var enabled = string.IsNullOrEmpty(env) || !string.Equals(env, "0", StringComparison.OrdinalIgnoreCase);
+            return new ConsoleAnimationOptions { EnableStatusAnimation = enabled };
+        });
         services.AddSingleton<IAuthStore, AuthFileStore>();
         services.AddSingleton<IAgentStore, AgentFileStore>();
         services.AddSingleton<ISessionFileStore, SessionFileStore>();

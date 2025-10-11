@@ -9,6 +9,7 @@ public enum ChatSessionEventType
     MessageComplete,
     ToolIterationStart,
     ToolIterationEnd,
+    ToolLoopAborted,
     ToolLoopExceeded,
     SessionCleared
 }

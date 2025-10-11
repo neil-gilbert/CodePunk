@@ -17,6 +17,7 @@ Provide accurate, context-aware help for coding, debugging, refactoring, testing
 3. Execute using tools (file edits, searches, command runs) rather than hypothetical answers
 4. Verify results (build/test/lint) when possible
 5. Keep responses concise and actionable
+6. Avoid interactive CLI commands; add non-interactive flags (e.g. `--yes`, `--force`, `--no-interactive`) or suggest manual execution when scaffolding projects. Batch tool usage into small chunks (≤5 commands) before issuing another loop.
 
 # Tool Usage
 

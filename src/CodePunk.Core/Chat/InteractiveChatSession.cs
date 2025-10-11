@@ -1,5 +1,7 @@
 using System.Text;
+using System.Linq;
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Extensions;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -30,6 +32,7 @@ public class InteractiveChatSession
     public long AccumulatedPromptTokens { get; private set; }
     public long AccumulatedCompletionTokens { get; private set; }
     public decimal AccumulatedCost { get; private set; }
+    public IChatSessionEventStream Events => _eventStream;
 
     public InteractiveChatSession(
         ISessionService sessionService,
@@ -145,13 +148,16 @@ public class InteractiveChatSession
     {
         Message? finalResponse = null;
         var iteration = 0;
+        var toolCallHistory = new Dictionary<string, int>();
+        var repeatedToolIterations = 0;
+        var consecutiveErrorIterations = 0;
         
         while (finalResponse == null && iteration < _options.MaxToolCallIterations)
         {
             iteration++;
             ToolIteration = iteration;
-            _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
-                iteration, _options.MaxToolCallIterations);
+            _logger.LogInformation("Tool iteration {Iteration}/{MaxIterations} (history entries: {HistoryCount})",
+                iteration, _options.MaxToolCallIterations, toolCallHistory.Count);
                 
             // Get AI response
             var (content, toolCalls) = await AIResponseProcessor.ProcessStreamingResponseAsync(
@@ -170,6 +176,43 @@ public class InteractiveChatSession
             if (toolCalls.Count == 0)
             {
                 finalResponse = aiResponse;
+                break;
+            }
+
+            if (_options.MaxToolCallsPerIteration > 0 && toolCalls.Count > _options.MaxToolCallsPerIteration)
+            {
+                finalResponse = await CreateGuardrailMessageAsync(
+                        $"The assistant requested {toolCalls.Count} tool commands at once. Split the work into batches of {_options.MaxToolCallsPerIteration} or fewer before continuing.",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                currentMessages.Add(finalResponse);
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopAborted, CurrentSession?.Id, iteration));
+                break;
+            }
+
+            _logger.LogInformation("AI requested {ToolCount} tool call(s): {ToolSummary}",
+                toolCalls.Count, DescribeToolCalls(toolCalls));
+
+            var repeatedThisIteration = RegisterToolCalls(toolCalls, toolCallHistory);
+            if (repeatedThisIteration)
+            {
+                repeatedToolIterations++;
+                _logger.LogWarning("Repeated tool commands detected on iteration {Iteration}; streak={Streak}",
+                    iteration, repeatedToolIterations);
+            }
+            else
+            {
+                repeatedToolIterations = 0;
+            }
+
+            if (_options.MaxRepeatedToolCalls > 0 && repeatedToolIterations >= _options.MaxRepeatedToolCalls)
+            {
+                finalResponse = await CreateGuardrailMessageAsync(
+                        "Stopped tool execution because the assistant kept issuing the same command. Adjust the plan or run the command manually.",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                currentMessages.Add(finalResponse);
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopAborted, CurrentSession?.Id, iteration));
                 break;
             }
 
@@ -192,6 +235,29 @@ public class InteractiveChatSession
                     [new TextPart("Operation cancelled by user.")],
                     _options.DefaultModel,
                     _options.DefaultProvider);
+            }
+
+            var allErrors = toolResultParts.Count > 0 && toolResultParts.All(p => p.IsError);
+            if (allErrors)
+            {
+                consecutiveErrorIterations++;
+                _logger.LogWarning("All tool calls failed on iteration {Iteration}; consecutive failures={Failures}",
+                    iteration, consecutiveErrorIterations);
+            }
+            else
+            {
+                consecutiveErrorIterations = 0;
+            }
+
+            if (_options.MaxConsecutiveToolErrors > 0 && consecutiveErrorIterations >= _options.MaxConsecutiveToolErrors)
+            {
+                finalResponse = await CreateGuardrailMessageAsync(
+                        "Halting tool loop after repeated tool failures. Inspect the previous tool output and revise the request before continuing.",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                currentMessages.Add(finalResponse);
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopAborted, CurrentSession?.Id, iteration));
+                break;
             }
         }
 
@@ -265,15 +331,18 @@ public class InteractiveChatSession
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var iteration = 0;
-        
+        var toolCallHistory = new Dictionary<string, int>();
+        var repeatedToolIterations = 0;
+        var consecutiveErrorIterations = 0;
+
         while (iteration < _options.MaxToolCallIterations)
         {
             iteration++;
             ToolIteration = iteration;
             _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationStart, CurrentSession!.Id, iteration));
 
-            _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
-                iteration, _options.MaxToolCallIterations);
+            _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations} (history entries: {HistoryCount})", 
+                iteration, _options.MaxToolCallIterations, toolCallHistory.Count);
             
             var responseContent = new StringBuilder();
             var toolCalls = new List<ToolCallPart>();
@@ -354,6 +423,41 @@ public class InteractiveChatSession
                 yield break;
             }
 
+            _logger.LogInformation("AI requested {ToolCount} tool call(s): {ToolSummary}",
+                toolCalls.Count, DescribeToolCalls(toolCalls));
+
+            var repeatedThisIteration = RegisterToolCalls(toolCalls, toolCallHistory);
+            if (repeatedThisIteration)
+            {
+                repeatedToolIterations++;
+                _logger.LogWarning("Repeated tool commands detected on iteration {Iteration}; streak={Streak}",
+                    iteration, repeatedToolIterations);
+            }
+            else
+            {
+                repeatedToolIterations = 0;
+            }
+
+            if (_options.MaxRepeatedToolCalls > 0 && repeatedToolIterations >= _options.MaxRepeatedToolCalls)
+            {
+                var guardMessage = await CreateGuardrailMessageAsync(
+                        "Stopped tool execution because the assistant kept issuing the same command. Adjust the plan or run the command manually.",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                currentMessages.Add(guardMessage);
+                var guardText = guardMessage.Parts.OfType<TextPart>().FirstOrDefault()?.Content ?? string.Empty;
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopAborted, CurrentSession?.Id, iteration));
+                ToolIteration = 0;
+                yield return new ChatStreamChunk
+                {
+                    ContentDelta = guardText,
+                    Model = model,
+                    Provider = provider,
+                    IsComplete = true
+                };
+                yield break;
+            }
+
             // Execute tool calls with streaming status updates
             var (toolResultParts, statusMessages, userCancelled) = await ToolExecutionHelper.ExecuteToolCallsWithStatusAsync(
                 toolCalls, _toolService, _logger, cancellationToken).ConfigureAwait(false);
@@ -394,6 +498,38 @@ public class InteractiveChatSession
                 yield break;
             }
 
+            var allErrors = toolResultParts.Count > 0 && toolResultParts.All(p => p.IsError);
+            if (allErrors)
+            {
+                consecutiveErrorIterations++;
+                _logger.LogWarning("All tool calls failed on iteration {Iteration}; consecutive failures={Failures}",
+                    iteration, consecutiveErrorIterations);
+            }
+            else
+            {
+                consecutiveErrorIterations = 0;
+            }
+
+            if (_options.MaxConsecutiveToolErrors > 0 && consecutiveErrorIterations >= _options.MaxConsecutiveToolErrors)
+            {
+                var guardMessage = await CreateGuardrailMessageAsync(
+                        "Halting tool loop after repeated tool failures. Inspect the previous tool output and revise the request before continuing.",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                currentMessages.Add(guardMessage);
+                var guardText = guardMessage.Parts.OfType<TextPart>().FirstOrDefault()?.Content ?? string.Empty;
+                _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopAborted, CurrentSession?.Id, iteration));
+                ToolIteration = 0;
+                yield return new ChatStreamChunk
+                {
+                    ContentDelta = guardText,
+                    Model = model,
+                    Provider = provider,
+                    IsComplete = true
+                };
+                yield break;
+            }
+
             _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolIterationEnd, CurrentSession!.Id, iteration));
         }
 
@@ -424,6 +560,45 @@ public class InteractiveChatSession
         {
             _eventStream.TryWrite(new ChatSessionEvent(ChatSessionEventType.ToolLoopExceeded, CurrentSession?.Id, iteration));
         }
+    }
+
+    private static bool RegisterToolCalls(IEnumerable<ToolCallPart> toolCalls, IDictionary<string, int> history)
+    {
+        var repeated = false;
+        foreach (var toolCall in toolCalls)
+        {
+            var signature = toolCall.GetStableSignature();
+            if (history.TryGetValue(signature, out var count))
+            {
+                history[signature] = count + 1;
+                repeated = true;
+            }
+            else
+            {
+                history[signature] = 1;
+            }
+        }
+
+        return repeated;
+    }
+
+    private static string DescribeToolCalls(IEnumerable<ToolCallPart> toolCalls)
+    {
+        var names = toolCalls.Select(call => call.Name).Where(name => !string.IsNullOrWhiteSpace(name)).ToArray();
+        return names.Length > 0 ? string.Join(", ", names) : "none";
+    }
+
+    private async Task<Message> CreateGuardrailMessageAsync(string content, CancellationToken cancellationToken)
+    {
+        var guardMessage = Message.Create(
+            CurrentSession!.Id,
+            MessageRole.Assistant,
+            [new TextPart(content)],
+            _options.DefaultModel,
+            _options.DefaultProvider);
+
+        await _messageService.CreateAsync(guardMessage, cancellationToken).ConfigureAwait(false);
+        return guardMessage;
     }
 
     /// <summary>

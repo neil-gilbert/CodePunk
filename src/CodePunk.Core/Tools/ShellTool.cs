@@ -1,4 +1,6 @@
+using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +15,39 @@ namespace CodePunk.Core.Tools;
 public class ShellTool : ITool
 {
     private readonly ShellCommandOptions _options;
+    private static readonly (string Pattern, string Recommendation)[] InteractiveCommandHints =
+    {
+        ("npm create", "Add --yes or use a predefined template to skip interactive prompts."),
+        ("npm init", "Add --yes to accept defaults or initialize manually."),
+        ("npx create-", "Pass --yes (or equivalent) to avoid interactive questions."),
+        ("yarn create", "Supply --yes or specific flags to bypass prompts."),
+        ("pnpm create", "Include --yes so the command does not wait for input."),
+        ("create-react-app", "Use --template and --use-npm with --yes to skip questions."),
+        ("dotnet new", "Include --force and disable restore (e.g. --no-restore) to make it non-interactive."),
+        ("rails new", "Pass --skip-bundle or run the command manually."),
+        ("mix phx.new", "Provide preset flags such as --install or --no-assets to avoid prompts."),
+        ("cargo new", "Add --vcs none or run manually to control prompts."),
+        ("flutter create", "Specify template flags (e.g. --project-name) to skip prompts.")
+    };
+
+    private static readonly string[] NonInteractiveTokens =
+    {
+        "--yes",
+        "--no-interactive",
+        "--skip-install",
+        "--skip-bundle",
+        "--skip-webpack-install",
+        "--skip-deps",
+        "--force",
+        "--defaults",
+        "--default",
+        "--silence-warnings",
+        "--quiet",
+        "--no-input",
+        "--no-restore",
+        "--no-assets",
+        "--non-interactive"
+    };
 
     public ShellTool(IOptions<ShellCommandOptions> options)
     {
@@ -50,6 +85,11 @@ public class ShellTool : ITool
                 type = "string",
                 description = "The working directory for the command (optional). " +
                              "If not provided, the current directory is used."
+            },
+            stdin = new
+            {
+                type = "string",
+                description = "Optional newline-delimited input that will be piped to the command's standard input."
             }
         },
         required = new[] { "command" }
@@ -88,6 +128,10 @@ public class ShellTool : ITool
                 ? dirElement.GetString() ?? Directory.GetCurrentDirectory()
                 : Directory.GetCurrentDirectory();
 
+            var stdin = arguments.TryGetProperty("stdin", out var stdinElement) && stdinElement.ValueKind == JsonValueKind.String
+                ? stdinElement.GetString()
+                : null;
+
             if (_options.EnableCommandValidation)
             {
                 var validationResult = ShellCommandValidator.ValidateCommand(
@@ -106,8 +150,28 @@ public class ShellTool : ITool
                 }
             }
 
-            var executionResult = await ExecuteCommandAsync(command, workingDirectory, cancellationToken);
-            return FormatToolResult(executionResult, description);
+            string? rewriteNote = null;
+            if (stdin is null && TryRewriteInteractiveCommand(command, out var rewrittenCommand, out var rewrittenNote))
+            {
+                command = rewrittenCommand;
+                rewriteNote = rewrittenNote;
+            }
+            else if (stdin is null && IsLikelyInteractiveCommand(command, out var recommendation))
+            {
+                var message = string.IsNullOrWhiteSpace(recommendation)
+                    ? $"Command blocked: '{command}' is likely interactive and would hang in this environment. Add non-interactive flags or run it manually."
+                    : $"Command blocked: '{command}' is likely interactive and would hang in this environment. {recommendation}";
+
+                return new ToolResult
+                {
+                    Content = message,
+                    IsError = true,
+                    ErrorMessage = "INTERACTIVE_COMMAND_BLOCKED"
+                };
+            }
+
+            var executionResult = await ExecuteCommandAsync(command, workingDirectory, stdin, cancellationToken);
+            return FormatToolResult(executionResult, description, rewriteNote);
         }
         catch (Exception ex)
         {
@@ -123,6 +187,7 @@ public class ShellTool : ITool
     private async Task<ShellExecutionResult> ExecuteCommandAsync(
         string command,
         string workingDirectory,
+        string? stdinPayload,
         CancellationToken cancellationToken)
     {
         var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -137,6 +202,7 @@ public class ShellTool : ITool
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = stdinPayload != null,
             CreateNoWindow = true
         };
 
@@ -172,6 +238,17 @@ public class ShellTool : ITool
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
+            if (stdinPayload != null)
+            {
+                await process.StandardInput.WriteAsync(stdinPayload);
+                if (!stdinPayload.EndsWith('\n'))
+                {
+                    await process.StandardInput.WriteLineAsync();
+                }
+                await process.StandardInput.FlushAsync();
+                process.StandardInput.Close();
+            }
+
             await process.WaitForExitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
@@ -205,7 +282,89 @@ public class ShellTool : ITool
         };
     }
 
-    private ToolResult FormatToolResult(ShellExecutionResult executionResult, string? description)
+    private static bool IsLikelyInteractiveCommand(string command, out string recommendation)
+    {
+        var normalized = command.Trim();
+        var lowered = normalized.ToLowerInvariant();
+
+        if (NonInteractiveTokens.Any(token => lowered.Contains(token)))
+        {
+            recommendation = string.Empty;
+            return false;
+        }
+
+        foreach (var (pattern, suggestion) in InteractiveCommandHints)
+        {
+            var loweredPattern = pattern.ToLowerInvariant();
+            var index = lowered.IndexOf(loweredPattern, StringComparison.Ordinal);
+            if (index < 0)
+            {
+                continue;
+            }
+
+            var preceding = index == 0 ? ' ' : lowered[index - 1];
+            if (!char.IsWhiteSpace(preceding) && preceding != ';' && preceding != '&')
+            {
+                continue;
+            }
+
+            recommendation = suggestion;
+            return true;
+        }
+
+        recommendation = string.Empty;
+        return false;
+    }
+
+    private static bool TryRewriteInteractiveCommand(string command, out string rewritten, out string note)
+    {
+        var builder = new StringBuilder(command.Trim());
+        var modified = false;
+        note = string.Empty;
+
+        if (ContainsPattern(command, "npx create-") || ContainsPattern(command, "npm create") ||
+            ContainsPattern(command, "yarn create") || ContainsPattern(command, "pnpm create"))
+        {
+            modified |= EnsureFlag(builder, "--yes");
+            if (modified)
+            {
+                note = "Added --yes so the create command runs without prompts.";
+            }
+        }
+        else if (ContainsPattern(command, "dotnet new"))
+        {
+            var changed = EnsureFlag(builder, "--force");
+            changed |= EnsureFlag(builder, "--no-restore");
+            modified |= changed;
+            if (changed)
+            {
+                note = "Added --force and --no-restore to keep dotnet new non-interactive.";
+            }
+        }
+
+        rewritten = builder.ToString();
+        return modified;
+    }
+
+    private static bool ContainsPattern(string command, string pattern) =>
+        command.Contains(pattern, StringComparison.OrdinalIgnoreCase);
+
+    private static bool EnsureFlag(StringBuilder builder, string flag)
+    {
+        if (builder.ToString().Contains(flag, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (builder.Length > 0 && !char.IsWhiteSpace(builder[^1]))
+        {
+            builder.Append(' ');
+        }
+        builder.Append(flag);
+        return true;
+    }
+
+    private ToolResult FormatToolResult(ShellExecutionResult executionResult, string? description, string? note)
     {
         var contentBuilder = new StringBuilder();
 
@@ -257,6 +416,11 @@ public class ShellTool : ITool
         if (executionResult.WasCancelled)
         {
             contentBuilder.AppendLine("Status: Cancelled by user");
+        }
+
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            contentBuilder.AppendLine($"Note: {note}");
         }
 
         var isError = executionResult.ExitCode.HasValue && executionResult.ExitCode.Value != 0;

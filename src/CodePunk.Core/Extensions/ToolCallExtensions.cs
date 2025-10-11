@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CodePunk.Core.Models;
 
@@ -27,6 +29,24 @@ public static class ToolCallExtensions
         catch
         {
             return null;
+        }
+    }
+
+    public static string GetStableSignature(this ToolCallPart toolCall)
+    {
+        try
+        {
+            var serializedArgs = toolCall.Arguments.ValueKind == JsonValueKind.Undefined || toolCall.Arguments.ValueKind == JsonValueKind.Null
+                ? "{}"
+                : JsonSerializer.Serialize(toolCall.Arguments);
+
+            var buffer = Encoding.UTF8.GetBytes($"{toolCall.Name}:{serializedArgs}");
+            var hash = SHA256.HashData(buffer);
+            return Convert.ToHexString(hash);
+        }
+        catch
+        {
+            return toolCall.Name;
         }
     }
 }

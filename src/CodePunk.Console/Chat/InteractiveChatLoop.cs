@@ -1,6 +1,10 @@
 using System.Text;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
+using CodePunk.Console.Rendering.Animations;
 using CodePunk.Core.Chat;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
@@ -17,6 +21,7 @@ public class InteractiveChatLoop
     private readonly StreamingResponseRenderer _renderer;
     private readonly IAnsiConsole _console;
     private readonly ILogger<InteractiveChatLoop> _logger;
+    private readonly ConsoleAnimationOptions _animationOptions;
 
     private bool _shouldExit;
     private bool _shouldCreateNewSession;
@@ -26,13 +31,15 @@ public class InteractiveChatLoop
         CommandProcessor commandProcessor,
         StreamingResponseRenderer renderer,
         IAnsiConsole console,
-        ILogger<InteractiveChatLoop> logger)
+        ILogger<InteractiveChatLoop> logger,
+        ConsoleAnimationOptions animationOptions)
     {
         _chatSession = chatSession;
         _commandProcessor = commandProcessor;
         _renderer = renderer;
         _console = console;
         _logger = logger;
+        _animationOptions = animationOptions;
     }
 
     /// <summary>
@@ -290,21 +297,105 @@ public class InteractiveChatLoop
 
         try
         {
-            _console.WriteLine();
-            _renderer.StartStreaming();
-
-            await foreach (var chunk in _chatSession.SendMessageStreamAsync(input, cancellationToken))
+            if (_animationOptions.EnableStatusAnimation)
             {
-                _renderer.ProcessChunk(chunk);
+                await _console.Status()
+                    .Spinner(ThinkingSpinnerFactory.Spinner)
+                    .SpinnerStyle(new Style(Color.Aqua))
+                    .StartAsync(async ctx =>
+                    {
+                        ctx.Status("Thinking…");
+                        using var subscription = new StatusEventSubscription(ctx, _chatSession.Events, _chatSession.CurrentSession?.Id, cancellationToken);
+                        await ExecuteChatMessageCoreAsync(input, cancellationToken);
+                    });
             }
-
-            _renderer.CompleteStreaming();
+            else
+            {
+                await ExecuteChatMessageCoreAsync(input, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling chat message");
             _console.MarkupLine($"[red]Error: {ex.Message}[/]");
             _console.WriteLine();
+        }
+    }
+
+    private async Task ExecuteChatMessageCoreAsync(string input, CancellationToken cancellationToken)
+    {
+        _console.WriteLine();
+        _renderer.StartStreaming();
+
+        await foreach (var chunk in _chatSession.SendMessageStreamAsync(input, cancellationToken))
+        {
+            _renderer.ProcessChunk(chunk);
+        }
+
+        _renderer.CompleteStreaming();
+    }
+
+    private sealed class StatusEventSubscription : IDisposable
+    {
+        private readonly StatusContext _context;
+        private readonly IChatSessionEventStream _events;
+        private readonly string? _sessionId;
+        private readonly CancellationTokenSource _cts;
+        private readonly Task _worker;
+
+        public StatusEventSubscription(StatusContext context, IChatSessionEventStream events, string? sessionId, CancellationToken externalToken)
+        {
+            _context = context;
+            _events = events;
+            _sessionId = sessionId;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+            _worker = Task.Run(() => PumpAsync(_cts.Token), _cts.Token);
+        }
+
+        private async Task PumpAsync(CancellationToken token)
+        {
+            await foreach (var evt in _events.Reader.ReadAllAsync(token))
+            {
+                if (!string.IsNullOrEmpty(_sessionId) && !string.IsNullOrEmpty(evt.SessionId) && !string.Equals(evt.SessionId, _sessionId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                switch (evt.Type)
+                {
+                    case ChatSessionEventType.MessageStart:
+                        _context.Status("Thinking…");
+                        break;
+                    case ChatSessionEventType.ToolIterationStart:
+                        var iteration = evt.Iteration ?? 0;
+                        _context.Status(iteration > 0
+                            ? $"Executing tools (pass {iteration})"
+                            : "Executing tools…");
+                        break;
+                    case ChatSessionEventType.ToolIterationEnd:
+                        _context.Status("Thinking…");
+                        break;
+                    case ChatSessionEventType.ToolLoopAborted:
+                        _context.Status("Tool loop interrupted");
+                        break;
+                    case ChatSessionEventType.ToolLoopExceeded:
+                        _context.Status("Max tool iterations reached");
+                        break;
+                }
+
+                if (evt.Type == ChatSessionEventType.MessageComplete && evt.IsFinal == true)
+                {
+                    return;
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            try { _worker.Wait(); }
+            catch { }
+            _cts.Dispose();
         }
     }
 }

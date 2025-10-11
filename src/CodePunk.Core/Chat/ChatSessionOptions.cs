@@ -9,6 +9,21 @@ public interface IChatSessionOptions
     /// Maximum number of tool calling iterations to prevent infinite loops
     /// </summary>
     int MaxToolCallIterations { get; }
+
+    /// <summary>
+    /// Maximum consecutive iterations allowed with repeated tool signatures before aborting
+    /// </summary>
+    int MaxRepeatedToolCalls { get; }
+
+    /// <summary>
+    /// Maximum consecutive iterations where all tool calls result in errors before aborting
+    /// </summary>
+    int MaxConsecutiveToolErrors { get; }
+
+    /// <summary>
+    /// Maximum number of tool calls the AI may request per iteration before we ask it to batch work
+    /// </summary>
+    int MaxToolCallsPerIteration { get; }
     
     /// <summary>
     /// Timeout for individual tool execution
@@ -34,7 +49,22 @@ public class ChatSessionOptions : IChatSessionOptions
     /// <summary>
     /// Maximum number of tool calling iterations to prevent infinite loops
     /// </summary>
-    public int MaxToolCallIterations { get; set; } = int.MaxValue;
+    public int MaxToolCallIterations { get; set; } = 8;
+
+    /// <summary>
+    /// Maximum consecutive iterations allowed with repeated tool signatures before aborting
+    /// </summary>
+    public int MaxRepeatedToolCalls { get; set; } = 3;
+
+    /// <summary>
+    /// Maximum consecutive iterations where all tool calls result in errors before aborting
+    /// </summary>
+    public int MaxConsecutiveToolErrors { get; set; } = 3;
+
+    /// <summary>
+    /// Maximum number of tool calls permitted in a single iteration before requiring batching
+    /// </summary>
+    public int MaxToolCallsPerIteration { get; set; } = 5;
     
     /// <summary>
     /// Timeout for individual tool execution
