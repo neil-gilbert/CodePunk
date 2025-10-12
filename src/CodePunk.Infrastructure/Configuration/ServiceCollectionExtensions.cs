@@ -88,6 +88,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, GlobTool>();
         services.AddScoped<ITool, SearchFilesTool>();
         services.AddScoped<ITool, ReadManyFilesTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Modes.PlanModeTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Modes.BugModeTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Planning.PlanGenerateTool>();
 
         services.AddLLMProviders(configuration);
 

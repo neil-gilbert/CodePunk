@@ -137,6 +137,75 @@ public class InteractiveChatSession
     }
 
     /// <summary>
+    /// If this is the first assistant turn in a session (one or more user messages, no assistant/tool replies),
+    /// inject a lightweight, non-persisted system instruction to select a mode via `mode_*` tools.
+    /// </summary>
+    private void TryInjectFirstTurnModeInstruction(List<Message> currentMessages)
+    {
+        try
+        {
+            if (CurrentSession == null || currentMessages == null || currentMessages.Count == 0) return;
+            var hasAssistantOrTool = currentMessages.Any(m => m.Role == MessageRole.Assistant || m.Role == MessageRole.Tool);
+            if (hasAssistantOrTool) return;
+            // Only inject once: add a marker by checking if we already injected (system content match)
+            var alreadyInjected = currentMessages.Any(m => m.Role == MessageRole.System &&
+                m.Parts.OfType<TextPart>().Any(p => p.Content.Contains("First turn mode selection", StringComparison.OrdinalIgnoreCase)));
+            if (alreadyInjected) return;
+
+            // Heuristic: only inject if first user message appears to contain actionable intent
+            var lastUser = currentMessages.LastOrDefault(m => m.Role == MessageRole.User);
+            var lastUserText = lastUser?.Parts.OfType<TextPart>()
+                .Select(p => p.Content)
+                .Aggregate(new StringBuilder(), (sb, s) => sb.AppendLine(s), sb => sb.ToString())
+                ?.Trim() ?? string.Empty;
+            if (!IsLikelyIntentfulFirstMessage(lastUserText))
+            {
+                return; // greet or low-intent: let normal chat proceed without forcing a mode
+            }
+
+            var instruction = "First turn mode selection: classify the user's request and call exactly one of these tools with concise arguments: " +
+                              "mode_plan (new work/feature planning) or mode_bug (issue triage/fix). After activation, continue with realistic steps.";
+            var sysText = "[First turn mode selection] " + instruction;
+            var sys = Message.Create(CurrentSession.Id, MessageRole.System, new[] { new TextPart(sysText) });
+            // Prepend so the provider considers it before user content
+            currentMessages.Insert(0, sys);
+        }
+        catch
+        {
+            // best-effort only; never fail the chat flow
+        }
+    }
+
+    private static bool IsLikelyIntentfulFirstMessage(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim();
+        if (t.Length <= 8)
+        {
+            var shortLower = t.ToLowerInvariant();
+            var greetings = new[] { "hi", "hello", "hey", "yo", "hola", "sup", "howdy" };
+            if (greetings.Contains(shortLower)) return false;
+        }
+        var lower = t.ToLowerInvariant();
+        // Non-intent common small talk
+        var smallTalk = new[] { "how are you", "what's up", "good morning", "good evening" };
+        if (smallTalk.Any(p => lower.Contains(p))) return false;
+
+        // Positive indicators of actionable intent
+        var intentVerbs = new[] { "add", "implement", "build", "create", "fix", "debug", "refactor", "migrate", "setup", "configure", "improve", "design", "plan", "feature", "change", "update", "rewrite", "optimize", "performance", "crash", "error", "exception", "test", "write tests", "bug" };
+        if (intentVerbs.Any(v => lower.Contains(v))) return true;
+
+        // Has file-like or code-like markers
+        if (lower.Contains(".cs") || lower.Contains(".ts") || lower.Contains(".js") || lower.Contains(".py") || lower.Contains(".md") || lower.Contains("code") || lower.Contains("file") || lower.Contains("path "))
+            return true;
+
+        // Enough length and a question mark often implies intent
+        if (t.Length > 30 && t.Contains('?')) return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// Processes conversation with tool calling loop
     /// </summary>
     private async Task<Message> ProcessConversationAsync(
@@ -145,6 +214,9 @@ public class InteractiveChatSession
     {
         Message? finalResponse = null;
         var iteration = 0;
+
+        // Inject first-turn mode selection instruction (ephemeral) if appropriate
+        TryInjectFirstTurnModeInstruction(currentMessages);
         
         while (finalResponse == null && iteration < _options.MaxToolCallIterations)
         {
@@ -279,6 +351,9 @@ public class InteractiveChatSession
             var toolCalls = new List<ToolCallPart>();
             var model = _options.DefaultModel;
             var provider = _options.DefaultProvider;
+
+            // Inject first-turn mode selection instruction (ephemeral) if appropriate
+            TryInjectFirstTurnModeInstruction(currentMessages);
 
             await foreach (var chunk in _llmService.SendMessageStreamAsync(currentMessages, cancellationToken))
             {
