@@ -206,6 +206,48 @@ public class InteractiveChatSession
     }
 
     /// <summary>
+    /// Injects an ephemeral system nudge when nearing the tool-iteration cap to guide the model
+    /// towards consolidation, batching, or finalizing an answer instead of continuing to loop.
+    /// </summary>
+    private void TryInjectIterationGuidance(List<Message> currentMessages, int iteration, int maxIterations)
+    {
+        try
+        {
+            if (CurrentSession == null || currentMessages == null || currentMessages.Count == 0) return;
+            if (maxIterations <= 0) return;
+
+            var remaining = Math.Max(0, maxIterations - iteration + 1);
+            if (remaining > 2) return; // only guide when close to cap
+
+            // Avoid injecting duplicates for the same iteration
+            var marker = $"[Loop guidance] iteration={iteration}/cap={maxIterations}";
+            var already = currentMessages.Any(m => m.Role == MessageRole.System && m.Parts.OfType<TextPart>().Any(p => p.Content.Contains(marker)));
+            if (already) return;
+
+            string guidance;
+            if (remaining <= 1)
+            {
+                guidance = "You have one tool-calling iteration remaining. Prioritize consolidating results and delivering a final answer. " +
+                           "Avoid repeating reads; batch file access using read_many_files/glob if strictly necessary. " +
+                           "If blocked on missing details, ask one precise clarification instead of continuing with tool calls.";
+            }
+            else
+            {
+                guidance = "You are near the tool-call limit. Consolidate actions, prefer batching (read_many_files), " +
+                           "and reduce redundant operations. Aim to produce a final or near-final response.";
+            }
+
+            var sysText = marker + "\n" + guidance;
+            var sys = Message.Create(CurrentSession.Id, MessageRole.System, new[] { new TextPart(sysText) });
+            currentMessages.Insert(0, sys);
+        }
+        catch
+        {
+            // best-effort; never fail the chat flow
+        }
+    }
+
+    /// <summary>
     /// Processes conversation with tool calling loop
     /// </summary>
     private async Task<Message> ProcessConversationAsync(
@@ -225,6 +267,9 @@ public class InteractiveChatSession
             _logger.LogInformation("Tool calling iteration {Iteration}/{MaxIterations}", 
                 iteration, _options.MaxToolCallIterations);
                 
+            // Guidance: if we are near the iteration cap, nudge the model to consolidate
+            TryInjectIterationGuidance(currentMessages, iteration, _options.MaxToolCallIterations);
+
             // Get AI response
             var (content, toolCalls) = await AIResponseProcessor.ProcessStreamingResponseAsync(
                 _llmService.SendMessageStreamAsync(currentMessages, cancellationToken), 
@@ -354,6 +399,9 @@ public class InteractiveChatSession
 
             // Inject first-turn mode selection instruction (ephemeral) if appropriate
             TryInjectFirstTurnModeInstruction(currentMessages);
+
+            // Guidance: if we are near the iteration cap, nudge the model to consolidate
+            TryInjectIterationGuidance(currentMessages, iteration, _options.MaxToolCallIterations);
 
             await foreach (var chunk in _llmService.SendMessageStreamAsync(currentMessages, cancellationToken))
             {

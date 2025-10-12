@@ -123,11 +123,23 @@ public class LLMService : ILLMService
             ? _overrideModel!
             : provider.Models.FirstOrDefault()?.Id ?? "gpt-4o";
 
+        var msgs = messages.ToList();
+        var hasAssistantOrTool = msgs.Any(m => m.Role == MessageRole.Assistant || m.Role == MessageRole.Tool);
+        var allTools = _toolService.GetLLMTools();
+        IReadOnlyList<LLMTool>? toolsToSend = allTools;
+        if (!hasAssistantOrTool)
+        {
+            // First meaningful turn: restrict to mode tools to reduce token usage
+            toolsToSend = allTools.Where(t => string.Equals(t.Name, "mode_plan", StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(t.Name, "mode_bug", StringComparison.OrdinalIgnoreCase))
+                                  .ToList();
+        }
+
         return new LLMRequest
         {
             ModelId = modelId,
-            Messages = messages.ToList().AsReadOnly(),
-            Tools = _toolService.GetLLMTools(),
+            Messages = msgs.AsReadOnly(),
+            Tools = toolsToSend,
             MaxTokens = 4096,
             Temperature = 0.7,
             SystemPrompt = systemPrompt
