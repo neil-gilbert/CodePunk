@@ -214,7 +214,20 @@ public class LLMService : ILLMService
             return (request with { UseEphemeralCache = false }, null);
         }
 
-        var context = new PromptCacheContext(provider.Name, request);
+        // Build a slim cache context request keyed only on the system prompt so provider-side prompt caches are reused
+        // even as messages/tools change between turns.
+        var cacheKeyRequest = request with
+        {
+            Messages = Array.Empty<Message>(),
+            Tools = null,
+            MaxTokens = 0,
+            Temperature = 0,
+            TopP = 0,
+            UseEphemeralCache = true, // initial attempt will request ephemeral cache if supported
+            SystemPromptCacheId = null
+        };
+
+        var context = new PromptCacheContext(provider.Name, cacheKeyRequest);
         var existing = await _promptCache.TryGetAsync(context, cancellationToken).ConfigureAwait(false);
 
         if (existing != null)
