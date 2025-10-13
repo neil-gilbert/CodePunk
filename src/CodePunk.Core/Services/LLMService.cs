@@ -162,7 +162,6 @@ public class LLMService : ILLMService
         var preparation = await PrepareRequestAsync(provider, request, cancellationToken).ConfigureAwait(false);
 
         var response = await provider.SendAsync(preparation.RequestToSend, cancellationToken).ConfigureAwait(false);
-        _trace?.TraceResponse(provider.Name, request.ModelId, request.Messages.LastOrDefault()?.SessionId ?? "", BuildRespSummary(response), response.Content);
 
         if (preparation.Context != null && _promptCache != null)
         {

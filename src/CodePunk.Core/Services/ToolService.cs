@@ -113,11 +113,11 @@ public class ToolService : IToolService
 
     public IReadOnlyList<LLMTool> GetLLMTools()
     {
-        var compact = string.Equals(Environment.GetEnvironmentVariable("CODEPUNK_COMPACT_TOOLS"), "1", StringComparison.Ordinal);
+        // Always emit compact descriptions to reduce token usage.
         return _tools.Select(tool => new LLMTool
         {
             Name = tool.Name,
-            Description = compact ? TrimDescription(tool.Description) : tool.Description,
+            Description = TrimDescription(tool.Description),
             Parameters = tool.Parameters
         }).ToList();
     }
