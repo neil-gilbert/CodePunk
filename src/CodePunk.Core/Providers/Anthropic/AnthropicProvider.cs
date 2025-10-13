@@ -8,6 +8,8 @@ using System.Text.Json;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
 using Microsoft.Extensions.Logging;
+using Polly;
+using Polly.Retry;
 
 namespace CodePunk.Core.Providers.Anthropic;
 
@@ -16,6 +18,7 @@ public class AnthropicProvider : ILLMProvider
     private readonly HttpClient _httpClient;
     private readonly AnthropicConfiguration _config;
     private readonly ILogger<AnthropicProvider> _logger;
+    private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
 
     public string Name => "Anthropic";
 
@@ -26,6 +29,7 @@ public class AnthropicProvider : ILLMProvider
         _httpClient = httpClient;
         _config = config;
         _logger = logger;
+        _retryPolicy = CreateRetryPolicy(_logger);
 
         // Configure HTTP client
         var baseUrl = config.BaseUrl.TrimEnd('/') + "/";
@@ -69,7 +73,10 @@ public class AnthropicProvider : ILLMProvider
         };
             _logger.LogDebug("Sending request to Anthropic API for model {Model}", request.ModelId);
 
-            var response = await _httpClient.PostAsJsonAsync("messages", anthropicRequest, jsonOptions, cancellationToken);
+            var response = await _retryPolicy.ExecuteAsync(async (ct) =>
+            {
+                return await _httpClient.PostAsJsonAsync("messages", anthropicRequest, jsonOptions, ct);
+            }, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -135,7 +142,8 @@ public class AnthropicProvider : ILLMProvider
     httpRequest.Headers.Accept.Clear();
     httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-        using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await _retryPolicy.ExecuteAsync((ct) =>
+            _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct), cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -364,6 +372,26 @@ public class AnthropicProvider : ILLMProvider
         }
         
         _logger.LogInformation("Finished reading Anthropic streaming response");
+    }
+
+    private static AsyncRetryPolicy<HttpResponseMessage> CreateRetryPolicy(ILogger logger)
+    {
+        // Retry on 429/503 with exponential backoff + jitter (max ~8s delay total for 4 retries)
+        var sleepDurations = new[] { 0.5, 1.0, 2.0, 4.0 };
+        var rnd = new Random();
+        return Policy
+            .HandleResult<HttpResponseMessage>(r =>
+                (int)r.StatusCode == 429 || (int)r.StatusCode == 503)
+            .WaitAndRetryAsync(
+                sleepDurations.Length,
+                retryAttempt =>
+                {
+                    var baseDelay = TimeSpan.FromSeconds(sleepDurations[retryAttempt - 1]);
+                    var jitter = TimeSpan.FromMilliseconds(rnd.Next(50, 250));
+                    var delay = baseDelay + jitter;
+                    logger.LogDebug("Anthropic transient HTTP issue – retry {Attempt} in {Delay}.", retryAttempt, delay);
+                    return delay;
+                });
     }
 
     private AnthropicRequest ConvertToAnthropicRequest(LLMRequest request)

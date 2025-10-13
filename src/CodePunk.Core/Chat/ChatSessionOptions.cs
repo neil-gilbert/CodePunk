@@ -34,7 +34,7 @@ public class ChatSessionOptions : IChatSessionOptions
     /// <summary>
     /// Maximum number of tool calling iterations to prevent infinite loops
     /// </summary>
-    public int MaxToolCallIterations { get; set; } = 5;
+    public int MaxToolCallIterations { get; set; } = 150;
     
     /// <summary>
     /// Timeout for individual tool execution

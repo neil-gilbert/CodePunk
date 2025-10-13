@@ -111,11 +111,25 @@ public class ToolService : IToolService
         }
     }
 
-    public IReadOnlyList<LLMTool> GetLLMTools() =>
-        _tools.Select(tool => new LLMTool
+    public IReadOnlyList<LLMTool> GetLLMTools()
+    {
+        var compact = string.Equals(Environment.GetEnvironmentVariable("CODEPUNK_COMPACT_TOOLS"), "1", StringComparison.Ordinal);
+        return _tools.Select(tool => new LLMTool
         {
             Name = tool.Name,
-            Description = tool.Description,
+            Description = compact ? TrimDescription(tool.Description) : tool.Description,
             Parameters = tool.Parameters
         }).ToList();
+    }
+
+    private static string TrimDescription(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return description;
+        // Use first sentence or cap to 140 chars for compact mode
+        var firstStop = description.IndexOf('.', StringComparison.Ordinal);
+        var first = firstStop > 0 ? description[..(firstStop + 1)] : description;
+        var trimmed = first.Trim();
+        if (trimmed.Length > 140) trimmed = trimmed[..140].TrimEnd() + "…";
+        return trimmed;
+    }
 }

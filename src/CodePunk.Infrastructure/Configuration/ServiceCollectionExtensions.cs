@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using CodePunk.Core.Tracing;
 
 namespace CodePunk.Infrastructure.Configuration;
 
@@ -54,6 +55,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptProvider, PromptProvider>();
 
         services.AddScoped<ILLMService, LLMService>();
+        // Tracing disabled by default; enable via temporary diagnostics only
         services.AddScoped<IToolService, ToolService>();
 
         services.AddScoped<InteractiveChatSession>();

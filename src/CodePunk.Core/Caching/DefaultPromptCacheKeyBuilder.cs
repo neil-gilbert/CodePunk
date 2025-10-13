@@ -30,32 +30,11 @@ public sealed class DefaultPromptCacheKeyBuilder : IPromptCacheKeyBuilder
 
         writer.WriteStartObject();
         writer.WriteString("provider", context.ProviderName);
-        writer.WriteString("model", request.ModelId);
+        // Build a cache key based solely on the system prompt text and provider.
+        // This maximizes reuse of provider-side system prompt caches across turns, regardless of messages/tools.
         if (!string.IsNullOrEmpty(request.SystemPrompt))
         {
             writer.WriteString("systemPrompt", request.SystemPrompt);
-        }
-        writer.WriteNumber("temperature", request.Temperature);
-        writer.WriteNumber("topP", request.TopP);
-        writer.WriteNumber("maxTokens", request.MaxTokens);
-
-        writer.WritePropertyName("messages");
-        writer.WriteStartArray();
-        foreach (var message in request.Messages ?? Array.Empty<Message>())
-        {
-            WriteMessage(writer, message);
-        }
-        writer.WriteEndArray();
-
-        if (request.Tools is { Count: > 0 } tools)
-        {
-            writer.WritePropertyName("tools");
-            writer.WriteStartArray();
-            foreach (var tool in tools.OrderBy(t => t.Name, StringComparer.Ordinal))
-            {
-                WriteTool(writer, tool);
-            }
-            writer.WriteEndArray();
         }
 
         writer.WriteEndObject();

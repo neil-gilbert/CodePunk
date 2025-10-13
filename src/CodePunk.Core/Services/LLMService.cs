@@ -3,6 +3,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Caching;
 using CodePunk.Core.Models;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace CodePunk.Core.Services;
 
@@ -33,6 +34,7 @@ public class LLMService : ILLMService
     private readonly IToolService _toolService;
     private readonly IPromptCache? _promptCache;
     private readonly PromptCacheOptions _cacheOptions;
+    private readonly ILogger<LLMService>? _logger;
     private string? _overrideProvider;
     private string? _overrideModel;
 
@@ -41,13 +43,15 @@ public class LLMService : ILLMService
         IPromptProvider promptProvider,
         IToolService toolService,
         IPromptCache? promptCache = null,
-        IOptions<PromptCacheOptions>? cacheOptions = null)
+        IOptions<PromptCacheOptions>? cacheOptions = null,
+        ILogger<LLMService>? logger = null)
     {
         _providerFactory = providerFactory;
         _promptProvider = promptProvider;
         _toolService = toolService;
         _promptCache = promptCache;
         _cacheOptions = cacheOptions?.Value ?? new PromptCacheOptions();
+        _logger = logger;
     }
 
     public IReadOnlyList<ILLMProvider> GetProviders()
@@ -135,7 +139,7 @@ public class LLMService : ILLMService
                                   .ToList();
         }
 
-        return new LLMRequest
+        var request = new LLMRequest
         {
             ModelId = modelId,
             Messages = msgs.AsReadOnly(),
@@ -144,6 +148,7 @@ public class LLMService : ILLMService
             Temperature = 0.7,
             SystemPrompt = systemPrompt
         };
+        return request;
     }
 
     private static Message ConvertResponseToMessage(LLMResponse response, string sessionId, string providerName)
@@ -157,6 +162,7 @@ public class LLMService : ILLMService
         var preparation = await PrepareRequestAsync(provider, request, cancellationToken).ConfigureAwait(false);
 
         var response = await provider.SendAsync(preparation.RequestToSend, cancellationToken).ConfigureAwait(false);
+        _trace?.TraceResponse(provider.Name, request.ModelId, request.Messages.LastOrDefault()?.SessionId ?? "", BuildRespSummary(response), response.Content);
 
         if (preparation.Context != null && _promptCache != null)
         {
@@ -188,7 +194,6 @@ public class LLMService : ILLMService
                 await _promptCache.StoreAsync(preparation.Context, true, chunk.PromptCache, cancellationToken).ConfigureAwait(false);
                 cacheStored = true;
             }
-
             yield return chunk;
         }
 
@@ -197,6 +202,8 @@ public class LLMService : ILLMService
             await _promptCache.StoreAsync(preparation.Context, false, null, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    
 
     private async Task<(LLMRequest RequestToSend, PromptCacheContext? Context)> PrepareRequestAsync(
         ILLMProvider provider,
