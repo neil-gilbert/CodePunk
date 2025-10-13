@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptProvider, PromptProvider>();
 
         services.AddScoped<ILLMService, LLMService>();
+        // Tracing disabled by default; enable via temporary diagnostics only
         services.AddScoped<IToolService, ToolService>();
 
         services.AddScoped<InteractiveChatSession>();
@@ -88,6 +89,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, GlobTool>();
         services.AddScoped<ITool, SearchFilesTool>();
         services.AddScoped<ITool, ReadManyFilesTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Modes.PlanModeTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Modes.BugModeTool>();
+        services.AddScoped<ITool, CodePunk.Core.Tools.Planning.PlanGenerateTool>();
 
         services.AddLLMProviders(configuration);
 

@@ -41,8 +41,19 @@ public class PromptProvider : IPromptProvider
             providerLayer = dp;
         }
 
+        // Default to provider-only composition. Can be overridden via CODEPUNK_PROMPT_COMPOSE.
+        // Allowed values: provider | base | composite
+        var compose = Environment.GetEnvironmentVariable("CODEPUNK_PROMPT_COMPOSE")?.Trim().ToLowerInvariant();
         string resolved;
-        if (baseLayer != null && providerLayer != null)
+        if ((string.IsNullOrEmpty(compose) || compose == "provider") && providerLayer != null)
+        {
+            resolved = providerLayer.TrimEnd() + "\n";
+        }
+        else if (compose == "base" && baseLayer != null)
+        {
+            resolved = baseLayer.TrimEnd() + "\n";
+        }
+        else if (baseLayer != null && providerLayer != null)
         {
             resolved = baseLayer.TrimEnd() + "\n\n" + providerLayer.Trim() + "\n";
         }

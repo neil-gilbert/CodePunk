@@ -29,6 +29,7 @@ public static class ConsoleServiceCollectionExtensions
             services.Configure<PlanAiGenerationOptions>(configuration.GetSection("PlanAI"));
         }
         services.AddScoped<Planning.IPlanAiGenerationService, Planning.PlanAiGenerationService>();
+        services.AddScoped<CodePunk.Core.Abstractions.IPlanService, Console.Planning.ConsolePlanServiceAdapter>();
 
         services.AddScoped<InteractiveChatLoop>();
         services.AddSingleton(new StreamingRendererOptions { LiveEnabled = false });

@@ -23,9 +23,21 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --no-restore -bl:artifacts/msbuild-build.binlog
     - name: Test
-      run: dotnet test --no-build --verbosity normal --logger trx --results-directory "TestResults"
+      run: |
+        dotnet test --no-build --verbosity normal \
+          --logger "trx;LogFileName=tests.trx" --results-directory "TestResults"
+        echo "dotnet test exit code=$?"
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-ci
+        path: |
+          TestResults/**/*.trx
+          TestResults/**/*.xml
+          artifacts/msbuild-build.binlog
     - name: Dotnet Test Reporter
       uses: bibipkins/dotnet-test-reporter@v1.5.4
       with:

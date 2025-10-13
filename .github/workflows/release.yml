@@ -30,9 +30,22 @@ jobs:
       - name: Restore
         run: dotnet restore CodePunk.sln
       - name: Build
-        run: dotnet build --configuration Release --no-restore CodePunk.sln
+        run: |
+          dotnet build --configuration Release --no-restore CodePunk.sln -bl:artifacts/msbuild-build.binlog
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity minimal CodePunk.sln
+        run: |
+          dotnet test --configuration Release --no-build --verbosity normal \
+            --logger "trx;LogFileName=tests.trx" --results-directory TestResults CodePunk.sln 
+          echo "dotnet test exit code=$?"
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-release
+          path: |
+            TestResults/**/*.trx
+            TestResults/**/*.xml
+            artifacts/msbuild-build.binlog
       - name: Pack Tool
         run: dotnet pack src/CodePunk.Console/CodePunk.Console.csproj -c Release -o artifacts/nuget /p:ContinuousIntegrationBuild=true
       - name: Upload Tool Package

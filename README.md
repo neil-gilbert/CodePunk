@@ -64,6 +64,15 @@ You will be guided to:
 
 After that you can immediately chat, list models, or create plans. If you add keys outside the app later, use `/reload` to dynamically re-scan and register providers without restarting.
 
+### Modes (First Turn)
+
+On the first message of a new session, CodePunk now asks the model to classify and activate one mode by calling a tool:
+
+- PLAN: `mode_plan` – for new work/features; typically followed by `plan_generate_ai` to draft a multi-file plan.
+- BUG: `mode_bug` – for triage and fixing issues; suggests realistic next steps (read/search/shell/tests).
+
+After activation, the model proceeds with developer-style steps using existing tools (read_file, glob, search_file_content, shell, write_file).
+
 ### Optional: Environment Variables (Legacy / CI Friendly)
 
 You can still export keys for non-interactive or CI usage:

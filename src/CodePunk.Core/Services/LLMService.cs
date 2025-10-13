@@ -3,6 +3,7 @@ using CodePunk.Core.Abstractions;
 using CodePunk.Core.Caching;
 using CodePunk.Core.Models;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace CodePunk.Core.Services;
 
@@ -33,6 +34,7 @@ public class LLMService : ILLMService
     private readonly IToolService _toolService;
     private readonly IPromptCache? _promptCache;
     private readonly PromptCacheOptions _cacheOptions;
+    private readonly ILogger<LLMService>? _logger;
     private string? _overrideProvider;
     private string? _overrideModel;
 
@@ -41,13 +43,15 @@ public class LLMService : ILLMService
         IPromptProvider promptProvider,
         IToolService toolService,
         IPromptCache? promptCache = null,
-        IOptions<PromptCacheOptions>? cacheOptions = null)
+        IOptions<PromptCacheOptions>? cacheOptions = null,
+        ILogger<LLMService>? logger = null)
     {
         _providerFactory = providerFactory;
         _promptProvider = promptProvider;
         _toolService = toolService;
         _promptCache = promptCache;
         _cacheOptions = cacheOptions?.Value ?? new PromptCacheOptions();
+        _logger = logger;
     }
 
     public IReadOnlyList<ILLMProvider> GetProviders()
@@ -123,15 +127,28 @@ public class LLMService : ILLMService
             ? _overrideModel!
             : provider.Models.FirstOrDefault()?.Id ?? "gpt-4o";
 
-        return new LLMRequest
+        var msgs = messages.ToList();
+        var hasAssistantOrTool = msgs.Any(m => m.Role == MessageRole.Assistant || m.Role == MessageRole.Tool);
+        var allTools = _toolService.GetLLMTools();
+        IReadOnlyList<LLMTool>? toolsToSend = allTools;
+        if (!hasAssistantOrTool)
+        {
+            // First meaningful turn: restrict to mode tools to reduce token usage
+            toolsToSend = allTools.Where(t => string.Equals(t.Name, "mode_plan", StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(t.Name, "mode_bug", StringComparison.OrdinalIgnoreCase))
+                                  .ToList();
+        }
+
+        var request = new LLMRequest
         {
             ModelId = modelId,
-            Messages = messages.ToList().AsReadOnly(),
-            Tools = _toolService.GetLLMTools(),
+            Messages = msgs.AsReadOnly(),
+            Tools = toolsToSend,
             MaxTokens = 4096,
             Temperature = 0.7,
             SystemPrompt = systemPrompt
         };
+        return request;
     }
 
     private static Message ConvertResponseToMessage(LLMResponse response, string sessionId, string providerName)
@@ -176,7 +193,6 @@ public class LLMService : ILLMService
                 await _promptCache.StoreAsync(preparation.Context, true, chunk.PromptCache, cancellationToken).ConfigureAwait(false);
                 cacheStored = true;
             }
-
             yield return chunk;
         }
 
@@ -185,6 +201,8 @@ public class LLMService : ILLMService
             await _promptCache.StoreAsync(preparation.Context, false, null, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    
 
     private async Task<(LLMRequest RequestToSend, PromptCacheContext? Context)> PrepareRequestAsync(
         ILLMProvider provider,
@@ -196,7 +214,20 @@ public class LLMService : ILLMService
             return (request with { UseEphemeralCache = false }, null);
         }
 
-        var context = new PromptCacheContext(provider.Name, request);
+        // Build a slim cache context request keyed only on the system prompt so provider-side prompt caches are reused
+        // even as messages/tools change between turns.
+        var cacheKeyRequest = request with
+        {
+            Messages = Array.Empty<Message>(),
+            Tools = null,
+            MaxTokens = 0,
+            Temperature = 0,
+            TopP = 0,
+            UseEphemeralCache = true, // initial attempt will request ephemeral cache if supported
+            SystemPromptCacheId = null
+        };
+
+        var context = new PromptCacheContext(provider.Name, cacheKeyRequest);
         var existing = await _promptCache.TryGetAsync(context, cancellationToken).ConfigureAwait(false);
 
         if (existing != null)
