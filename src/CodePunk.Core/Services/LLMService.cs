@@ -133,6 +133,11 @@ public class LLMService : ILLMService
     private LLMRequest ConvertMessagesToRequest(IList<Message> messages, string providerName)
     {
         var systemPrompt = _promptProvider.GetSystemPrompt(providerName, PromptType.Coder);
+
+        // Append working directory so AI knows the context
+        var workingDir = Directory.GetCurrentDirectory();
+        systemPrompt += $"\n\nWorking directory: {workingDir}\n";
+
         var provider = _providerFactory.GetProvider(providerName);
         var modelId = !string.IsNullOrWhiteSpace(_overrideModel) && provider.Models.Any(m => m.Id == _overrideModel)
             ? _overrideModel!

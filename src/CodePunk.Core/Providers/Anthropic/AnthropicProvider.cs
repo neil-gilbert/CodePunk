@@ -149,21 +149,20 @@ public class AnthropicProvider : ILLMProvider
 
         anthropicRequest.Stream = true;
 
-        var content = JsonContent.Create(anthropicRequest, options: JsonOptions);
-
         _logger.LogDebug("Starting streaming request to Anthropic API for model {Model}", request.ModelId);
-
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
-        {
-            Content = content
-        };
-
-        httpRequest.Headers.Accept.Clear();
-        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
         HttpResponseMessage? streamResponseMsg = null;
         for (var attempt = 0; attempt < 4; attempt++)
         {
+            // Create a fresh HttpRequestMessage for each retry attempt
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
+            {
+                Content = JsonContent.Create(anthropicRequest, options: JsonOptions)
+            };
+
+            httpRequest.Headers.Accept.Clear();
+            httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+
             streamResponseMsg = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (streamResponseMsg.IsSuccessStatusCode) break;
             if ((int)streamResponseMsg.StatusCode == 429 || (int)streamResponseMsg.StatusCode == 503)
