@@ -164,7 +164,8 @@ public class InteractiveChatSession
             }
 
             var instruction = "First turn mode selection: classify the user's request and call exactly one of these tools with concise arguments: " +
-                              "mode_plan (new work/feature planning) or mode_bug (issue triage/fix). After activation, continue with realistic steps.";
+                              "plan_generate_ai (generate a multi-file change plan from a natural language goal), " +
+                              "mode_plan (new work/feature planning), or mode_bug (issue triage/fix). After activation, continue with realistic steps.";
             var sysText = "[First turn mode selection] " + instruction;
             var sys = Message.Create(CurrentSession.Id, MessageRole.System, new[] { new TextPart(sysText) });
             // Prepend so the provider considers it before user content

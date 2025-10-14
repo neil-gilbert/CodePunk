@@ -64,7 +64,20 @@ internal sealed class PlanCommandModule : ICommandModule
                         return;
                     }
                 var opts = new SessionSummaryOptions { MaxMessages = messages, IncludeToolMessages = includeTools };
-                var summary = await summarizer.SummarizeAsync(string.IsNullOrWhiteSpace(sessionId)? null! : sessionId, opts);
+                string resolvedSessionId = sessionId;
+                if (string.IsNullOrWhiteSpace(resolvedSessionId))
+                {
+                    var sessSvc = services.GetService<ISessionService>();
+                    var recent = sessSvc != null ? await sessSvc.GetRecentAsync(1, CancellationToken.None) : Array.Empty<Session>();
+                    if (recent.Count == 0)
+                    {
+                        if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanCreateFromSessionV1, error = new { code = "NoSessions", message = "No recent sessions available to summarize" } }); return; }
+                        if (!OutputContext.IsQuiet()) console.MarkupLine(ConsoleStyles.Warn("No recent sessions available; please provide --goal explicitly"));
+                        return;
+                    }
+                    resolvedSessionId = recent[0].Id;
+                }
+                var summary = await summarizer.SummarizeAsync(resolvedSessionId, opts);
                 if (summary == null)
                 {
                     if (json) { JsonOutput.Write(console, new { schema = Rendering.Schemas.PlanCreateFromSessionV1, error = new { code = "SummaryUnavailable", message = "Could not infer a plan from session" } }); return; }
@@ -488,11 +501,26 @@ internal sealed class PlanCommandModule : ICommandModule
             {
                 if (json)
                 {
-                    JsonOutput.Write(console, new { schema = Schemas.PlanGenerateAIV1, error = new { code = result.ErrorCode, message = result.ErrorMessage } });
+                    var errorPayload = new
+                    {
+                        schema = Schemas.PlanGenerateAIV1,
+                        planId = result.PlanId,
+                        goal = result.Goal,
+                        provider = result.Provider,
+                        model = result.Model,
+                        error = new { code = result.ErrorCode, message = result.ErrorMessage },
+                        rawModelContent = result.RawModelContent
+                    };
+                    JsonOutput.Write(console, errorPayload);
                 }
                 else if (!OutputContext.IsQuiet())
                 {
                     console.MarkupLine(ConsoleStyles.Error(result.ErrorMessage ?? result.ErrorCode!));
+                    if (!string.IsNullOrWhiteSpace(result.RawModelContent))
+                    {
+                        var preview = result.RawModelContent.Length > 300 ? result.RawModelContent.Substring(0, 300) + "..." : result.RawModelContent;
+                        console.MarkupLine($"[dim]Raw output:[/] {ConsoleStyles.Escape(preview)}");
+                    }
                 }
                 return;
             }
