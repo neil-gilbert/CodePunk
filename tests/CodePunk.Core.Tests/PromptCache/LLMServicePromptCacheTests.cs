@@ -35,11 +35,11 @@ public class LLMServicePromptCacheTests
         var first = provider.SentRequests[0];
         first.UseEphemeralCache.Should().BeTrue();
         first.SystemPrompt.Should().Be("system");
-        first.SystemPromptCacheId.Should().BeNull();
+        // No cache id semantics required with ephemeral caching
     }
 
     [Fact]
-    public async Task SubsequentCall_ReusesCacheReference()
+    public async Task SubsequentCall_KeepsEphemeralCaching()
     {
         var provider = new RecordingProvider();
         provider.CacheInfos.Enqueue(new LLMPromptCacheInfo
@@ -48,7 +48,7 @@ public class LLMServicePromptCacheTests
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(20)
         });
-        provider.CacheInfos.Enqueue(null); // Provider typically omits cache metadata on reuse
+        provider.CacheInfos.Enqueue(null);
 
         var service = CreateService(provider);
         var request = BuildRequest();
@@ -58,16 +58,16 @@ public class LLMServicePromptCacheTests
 
         provider.SentRequests.Should().HaveCount(2);
         var second = provider.SentRequests[1];
-        second.UseEphemeralCache.Should().BeFalse();
-        second.SystemPrompt.Should().BeNull();
-        second.SystemPromptCacheId.Should().Be("cache:abc123");
+        second.UseEphemeralCache.Should().BeTrue();
+        second.SystemPrompt.Should().Be("system");
+        // No cache id semantics required with ephemeral caching
     }
 
     [Fact]
-    public async Task ProviderWithoutCache_DisablesFutureAttempts()
+    public async Task ProviderWithoutMetadata_KeepsEphemeralAttempts()
     {
         var provider = new RecordingProvider();
-        provider.CacheInfos.Enqueue(null); // Provider does not return cache metadata
+        provider.CacheInfos.Enqueue(null);
         provider.CacheInfos.Enqueue(null);
 
         var service = CreateService(provider);
@@ -81,9 +81,9 @@ public class LLMServicePromptCacheTests
         var second = provider.SentRequests[1];
 
         first.UseEphemeralCache.Should().BeTrue();
-        second.UseEphemeralCache.Should().BeFalse();
+        second.UseEphemeralCache.Should().BeTrue();
         second.SystemPrompt.Should().Be("system");
-        second.SystemPromptCacheId.Should().BeNull();
+        // No cache id semantics required with ephemeral caching
     }
 
     private static LLMService CreateService(RecordingProvider provider)

@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptProvider, PromptProvider>();
 
         services.AddScoped<ILLMService, LLMService>();
+        services.AddScoped<ILLMTokenService, LLMTokenService>();
         // Tracing disabled by default; enable via temporary diagnostics only
         services.AddScoped<IToolService, ToolService>();
 
@@ -146,15 +147,15 @@ public static class ServiceCollectionExtensions
             };
 
             services.AddSingleton(anthropicConfig);
-                services.AddHttpClient<AnthropicProvider>()
-                    .AddStandardResilienceHandler();
+            services.AddHttpClient<AnthropicProvider>()
+                .AddStandardResilienceHandler();
             services.AddTransient<AnthropicProvider>(provider =>
             {
                 var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
                 var httpClient = httpClientFactory.CreateClient(nameof(AnthropicProvider));
                 var logger = provider.GetRequiredService<ILogger<AnthropicProvider>>();
-                
-                return new AnthropicProvider(httpClient, anthropicConfig, logger);
+                var cacheOptions = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PromptCacheOptions>>().Value;
+                return new AnthropicProvider(httpClient, anthropicConfig, cacheOptions, logger);
             });
         }
 

@@ -38,6 +38,10 @@ public class AnthropicTool
 
     [JsonPropertyName("input_schema")]
     public object InputSchema { get; set; } = new();
+
+    [JsonPropertyName("cache_control")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AnthropicCacheControlRequest? CacheControl { get; set; }
 }
 
 public class AnthropicMessage
@@ -127,11 +131,23 @@ public class AnthropicContent
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
+    [JsonPropertyName("server_name")]
+    public string? ServerName { get; set; }
+
     [JsonPropertyName("input")]
     public object? Input { get; set; }
 
     [JsonPropertyName("cache_control")]
     public AnthropicCacheControlResponse? CacheControl { get; set; }
+
+    [JsonPropertyName("tool_use_id")]
+    public string? ToolUseId { get; set; }
+
+    [JsonPropertyName("is_error")]
+    public bool? IsError { get; set; }
+
+    [JsonPropertyName("content")]
+    public JsonElement? Content { get; set; }
 }
 
 public class AnthropicUsage
@@ -185,10 +201,6 @@ public class AnthropicSystemContent
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Text { get; set; }
 
-    [JsonPropertyName("cache_id")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? CacheId { get; set; }
-
     [JsonPropertyName("cache_control")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public AnthropicCacheControlRequest? CacheControl { get; set; }
@@ -198,6 +210,10 @@ public class AnthropicCacheControlRequest
 {
     [JsonPropertyName("type")]
     public string Type { get; set; } = "ephemeral";
+
+    [JsonPropertyName("ttl")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Ttl { get; set; }
 }
 
 public class AnthropicCacheControlResponse

@@ -22,6 +22,7 @@ public interface ILLMService
     Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default);
     IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default);
     void SetSessionDefaults(string? providerName, string? modelId);
+    Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -110,6 +111,16 @@ public class LLMService : ILLMService
         if (!string.IsNullOrWhiteSpace(modelId)) _overrideModel = modelId.Trim();
     }
 
+    public async Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default)
+    {
+        var provider = ResolveProvider();
+        if (provider is CodePunk.Core.Providers.Anthropic.AnthropicProvider anthropic)
+        {
+            return await anthropic.CountTokensAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        return 0;
+    }
+
     private ILLMProvider ResolveProvider()
     {
         if (!string.IsNullOrWhiteSpace(_overrideProvider))
@@ -162,19 +173,6 @@ public class LLMService : ILLMService
         var preparation = await PrepareRequestAsync(provider, request, cancellationToken).ConfigureAwait(false);
 
         var response = await provider.SendAsync(preparation.RequestToSend, cancellationToken).ConfigureAwait(false);
-
-        if (preparation.Context != null && _promptCache != null)
-        {
-            if (response.PromptCache != null)
-            {
-                await _promptCache.StoreAsync(preparation.Context, true, response.PromptCache, cancellationToken).ConfigureAwait(false);
-            }
-            else if (preparation.RequestToSend.UseEphemeralCache)
-            {
-                await _promptCache.StoreAsync(preparation.Context, false, null, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
         return response;
     }
 
@@ -184,21 +182,9 @@ public class LLMService : ILLMService
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var preparation = await PrepareRequestAsync(provider, request, cancellationToken).ConfigureAwait(false);
-        var cacheStored = false;
-
         await foreach (var chunk in provider.StreamAsync(preparation.RequestToSend, cancellationToken))
         {
-            if (!cacheStored && preparation.Context != null && _promptCache != null && chunk.PromptCache != null)
-            {
-                await _promptCache.StoreAsync(preparation.Context, true, chunk.PromptCache, cancellationToken).ConfigureAwait(false);
-                cacheStored = true;
-            }
             yield return chunk;
-        }
-
-        if (!cacheStored && preparation.Context != null && _promptCache != null && preparation.RequestToSend.UseEphemeralCache)
-        {
-            await _promptCache.StoreAsync(preparation.Context, false, null, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -214,39 +200,7 @@ public class LLMService : ILLMService
             return (request with { UseEphemeralCache = false }, null);
         }
 
-        // Build a slim cache context request keyed only on the system prompt so provider-side prompt caches are reused
-        // even as messages/tools change between turns.
-        var cacheKeyRequest = request with
-        {
-            Messages = Array.Empty<Message>(),
-            Tools = null,
-            MaxTokens = 0,
-            Temperature = 0,
-            TopP = 0,
-            UseEphemeralCache = true, // initial attempt will request ephemeral cache if supported
-            SystemPromptCacheId = null
-        };
-
-        var context = new PromptCacheContext(provider.Name, cacheKeyRequest);
-        var existing = await _promptCache.TryGetAsync(context, cancellationToken).ConfigureAwait(false);
-
-        if (existing != null)
-        {
-            if (existing.ProviderSupportsCache && existing.CacheInfo != null)
-            {
-                var prepared = request with
-                {
-                    SystemPromptCacheId = existing.CacheInfo.CacheId,
-                    UseEphemeralCache = false,
-                    SystemPrompt = null
-                };
-                return (prepared, context);
-            }
-
-            return (request with { UseEphemeralCache = false }, context);
-        }
-
-        var attempt = request with { UseEphemeralCache = true };
-        return (attempt, context);
+        var prepared = request with { UseEphemeralCache = true };
+        return (prepared, null);
     }
 }

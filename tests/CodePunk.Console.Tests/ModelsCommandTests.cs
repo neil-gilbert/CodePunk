@@ -63,6 +63,7 @@ public class ModelsCommandTests
         public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => AsyncEmpty();
         private IAsyncEnumerable<LLMStreamChunk> AsyncEmpty() => Empty();
         private async IAsyncEnumerable<LLMStreamChunk> Empty() { await Task.CompletedTask; yield break; }
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     private class Provider : ILLMProvider {
         public string Name => "empty";
         public IReadOnlyList<LLMModel> Models => Array.Empty<LLMModel>();
@@ -86,6 +87,7 @@ public class ModelsCommandTests
     public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, new List<MessagePart>{ new TextPart("ok") }));
         public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Empty();
         private async IAsyncEnumerable<LLMStreamChunk> Empty() { await Task.CompletedTask; yield break; }
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     private record Provider(string Name, IReadOnlyList<LLMModel> Models) : ILLMProvider {
         public Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new LLMResponse { Content = string.Empty });
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken cancellationToken = default) => Empty();

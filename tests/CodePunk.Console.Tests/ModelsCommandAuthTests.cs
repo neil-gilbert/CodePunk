@@ -42,6 +42,7 @@ public class ModelsCommandAuthTests
         public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create("s", MessageRole.Assistant, new List<MessagePart>{ new TextPart("ok") }));
         public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Empty();
         private async IAsyncEnumerable<LLMStreamChunk> Empty(){ await Task.CompletedTask; yield break; }
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private static RootCommand BuildRoot(ILLMService llm, IAuthStore authStore)

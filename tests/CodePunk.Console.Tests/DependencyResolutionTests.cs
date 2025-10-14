@@ -81,8 +81,8 @@ internal class StubMessageService : IMessageService
     public Task DeleteBySessionAsync(string sessionId, CancellationToken cancellationToken = default)
     { _messages.RemoveAll(m => m.SessionId == sessionId); return Task.CompletedTask; }
 }
-internal class StubLLMService : ILLMService
-{
+    internal class StubLLMService : ILLMService
+    {
     public IReadOnlyList<ILLMProvider> GetProviders() => Array.Empty<ILLMProvider>();
     public ILLMProvider? GetProvider(string name) => null;
     public ILLMProvider GetDefaultProvider() => new StubProvider();
@@ -92,7 +92,8 @@ internal class StubLLMService : ILLMService
     public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => AsyncEmpty();
     public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, [new TextPart("stub")]) );
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => AsyncEmpty();
-    public void SetSessionDefaults(string? providerName, string? modelId) { }
+        public void SetSessionDefaults(string? providerName, string? modelId) { }
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     private IAsyncEnumerable<LLMStreamChunk> AsyncEmpty() => Empty();
     private async IAsyncEnumerable<LLMStreamChunk> Empty() { await Task.CompletedTask; yield break; }
     private class StubProvider : ILLMProvider 

@@ -32,7 +32,7 @@ public class AnthropicProviderIntegrationTests
 
         var httpClient = new HttpClient();
         var logger = new LoggerFactory().CreateLogger<AnthropicProvider>();
-        var provider = new AnthropicProvider(httpClient, config, logger);
+        var provider = new AnthropicProvider(httpClient, config, new CodePunk.Core.Caching.PromptCacheOptions(), logger);
 
     // Act - Basic provider info test (synchronous)
     var models = provider.Models;
@@ -75,7 +75,7 @@ public class AnthropicProviderIntegrationTests
 
         var httpClient = new HttpClient();
         var logger = new LoggerFactory().CreateLogger<AnthropicProvider>();
-        var provider = new AnthropicProvider(httpClient, config, logger);
+        var provider = new AnthropicProvider(httpClient, config, new CodePunk.Core.Caching.PromptCacheOptions(), logger);
 
         var request = new LLMRequest
         {
@@ -124,7 +124,7 @@ public class AnthropicProviderIntegrationTests
 
         var httpClient = new HttpClient();
         var logger = new LoggerFactory().CreateLogger<AnthropicProvider>();
-        var provider = new AnthropicProvider(httpClient, config, logger);
+        var provider = new AnthropicProvider(httpClient, config, new CodePunk.Core.Caching.PromptCacheOptions(), logger);
 
         var request = new LLMRequest
         {

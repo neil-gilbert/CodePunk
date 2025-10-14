@@ -4,7 +4,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -13,25 +15,41 @@ using Polly.Retry;
 
 namespace CodePunk.Core.Providers.Anthropic;
 
+/// <summary>
+/// Anthropic provider using direct HTTP and SSE to the Messages API.
+/// </summary>
 public class AnthropicProvider : ILLMProvider
 {
     private readonly HttpClient _httpClient;
     private readonly AnthropicConfiguration _config;
     private readonly ILogger<AnthropicProvider> _logger;
     private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
+    private readonly string? _ephemeralTtl;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
 
     public string Name => "Anthropic";
 
     public IReadOnlyList<LLMModel> Models { get; }
 
     public AnthropicProvider(HttpClient httpClient, AnthropicConfiguration config, ILogger<AnthropicProvider> logger)
+        : this(httpClient, config, new Core.Caching.PromptCacheOptions(), logger)
+    {
+    }
+
+    public AnthropicProvider(HttpClient httpClient, AnthropicConfiguration config, Core.Caching.PromptCacheOptions cacheOptions, ILogger<AnthropicProvider> logger)
     {
         _httpClient = httpClient;
         _config = config;
         _logger = logger;
         _retryPolicy = CreateRetryPolicy(_logger);
 
-        // Configure HTTP client
+        _ephemeralTtl = MapEphemeralTtl(cacheOptions.DefaultTtl);
+
         var baseUrl = config.BaseUrl.TrimEnd('/') + "/";
         _httpClient.BaseAddress = new Uri(baseUrl);
         var apiKey = (config.ApiKey ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
@@ -45,11 +63,10 @@ public class AnthropicProvider : ILLMProvider
     }
 
     /// <summary>
-    /// Attempt to fetch live models from Anthropic. Currently returns empty list as a fallback.
+    /// Attempt to fetch live models from Anthropic. Currently returns static list.
     /// </summary>
     public Task<IReadOnlyList<LLMModel>> FetchModelsAsync(CancellationToken cancellationToken = default)
     {
-        // Anthropic model listing not implemented yet. Fall back to static Models if needed by caller.
         return Task.FromResult(Models ?? Array.Empty<LLMModel>());
     }
 
@@ -57,35 +74,45 @@ public class AnthropicProvider : ILLMProvider
     {
         try
         {
-        var anthropicRequest = ConvertToAnthropicRequest(request);
-        
-        // Log request information to verify tools are being sent
-        _logger.LogInformation("Anthropic request: Tools count={ToolCount}", anthropicRequest.Tools?.Count ?? 0);
-        if (anthropicRequest.Tools?.Any() == true)
-        {
-            _logger.LogInformation("Anthropic request tools: {Tools}", 
-                string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
-        }
-        
-        var jsonOptions = new JsonSerializerOptions {
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-            PropertyNameCaseInsensitive = true
-        };
-            _logger.LogDebug("Sending request to Anthropic API for model {Model}", request.ModelId);
+            var anthropicRequest = ConvertToAnthropicRequest(request);
 
-            var response = await _retryPolicy.ExecuteAsync(async (ct) =>
+            _logger.LogInformation("Anthropic request: Tools count={ToolCount}", anthropicRequest.Tools?.Count ?? 0);
+            if (anthropicRequest.Tools?.Any() == true)
             {
-                return await _httpClient.PostAsJsonAsync("messages", anthropicRequest, jsonOptions, ct);
-            }, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Anthropic API error {Status}: {Body}", (int)response.StatusCode, errorBody);
-                response.EnsureSuccessStatusCode();
+                _logger.LogInformation("Anthropic request tools: {Tools}", string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
             }
 
-            var anthropicResponse = await response.Content.ReadFromJsonAsync<AnthropicResponse>(jsonOptions, cancellationToken);
-            
+            _logger.LogDebug("Sending request to Anthropic API for model {Model}", request.ModelId);
+            HttpResponseMessage? response = null;
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                response = await _httpClient.PostAsJsonAsync("messages", anthropicRequest, JsonOptions, cancellationToken);
+                if (response.IsSuccessStatusCode) break;
+                if ((int)response.StatusCode == 429 || (int)response.StatusCode == 503)
+                {
+                    var retryAfter = GetRetryAfterDelay(response);
+                    if (retryAfter.HasValue)
+                    {
+                        if (retryAfter.Value > TimeSpan.Zero)
+                            await Task.Delay(retryAfter.Value, cancellationToken);
+                        continue;
+                    }
+                    var delay = GetBackoffWithJitter(attempt);
+                    if (delay > TimeSpan.Zero)
+                        await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw CreateApiException(response, errorBody);
+            }
+
+            if (response == null)
+                throw new InvalidOperationException("No response from Anthropic API");
+
+            LogRateLimits(response);
+
+            var anthropicResponse = await response.Content.ReadFromJsonAsync<AnthropicResponse>(JsonOptions, cancellationToken);
+
             if (anthropicResponse == null)
             {
                 throw new InvalidOperationException("Received null response from Anthropic API");
@@ -110,75 +137,83 @@ public class AnthropicProvider : ILLMProvider
         }
     }
 
-    public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, 
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var anthropicRequest = ConvertToAnthropicRequest(request);
-        
-        // Log request information to verify tools are being sent
+
         _logger.LogInformation("Anthropic streaming request: Tools count={ToolCount}", anthropicRequest.Tools?.Count ?? 0);
         if (anthropicRequest.Tools?.Any() == true)
         {
-            _logger.LogInformation("Anthropic streaming request tools: {Tools}", 
-                string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
+            _logger.LogInformation("Anthropic streaming request tools: {Tools}", string.Join(", ", anthropicRequest.Tools.Select(t => t.Name)));
         }
-        
+
         anthropicRequest.Stream = true;
 
-        var jsonOptions = new JsonSerializerOptions {
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-            PropertyNameCaseInsensitive = true
-        };
-        var content = JsonContent.Create(anthropicRequest, options: jsonOptions);
+        var content = JsonContent.Create(anthropicRequest, options: JsonOptions);
 
         _logger.LogDebug("Starting streaming request to Anthropic API for model {Model}", request.ModelId);
 
-    using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
         {
             Content = content
         };
 
-    // Ensure server-sent events are returned for streaming
-    httpRequest.Headers.Accept.Clear();
-    httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        httpRequest.Headers.Accept.Clear();
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-        using var response = await _retryPolicy.ExecuteAsync((ct) =>
-            _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct), cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage? streamResponseMsg = null;
+        for (var attempt = 0; attempt < 4; attempt++)
         {
-            var err = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Anthropic streaming API error {Status}: {Body}", (int)response.StatusCode, err);
-            response.EnsureSuccessStatusCode();
+            streamResponseMsg = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (streamResponseMsg.IsSuccessStatusCode) break;
+            if ((int)streamResponseMsg.StatusCode == 429 || (int)streamResponseMsg.StatusCode == 503)
+            {
+                var retryAfter = GetRetryAfterDelay(streamResponseMsg);
+                if (retryAfter.HasValue)
+                {
+                    if (retryAfter.Value > TimeSpan.Zero)
+                        await Task.Delay(retryAfter.Value, cancellationToken);
+                    continue;
+                }
+                var delay = GetBackoffWithJitter(attempt);
+                if (delay > TimeSpan.Zero)
+                    await Task.Delay(delay, cancellationToken);
+                continue;
+            }
+            var err = await streamResponseMsg.Content.ReadAsStringAsync(cancellationToken);
+            throw CreateApiException(streamResponseMsg, err);
         }
+        if (streamResponseMsg == null)
+            yield break;
 
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        LogRateLimits(streamResponseMsg);
+
+        using var stream = await streamResponseMsg.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
         _logger.LogInformation("Starting to read Anthropic streaming response");
-        
+
         LLMUsage? tokenUsage = null;
-        var toolCallBuilders = new Dictionary<int, (ToolCall toolCall, StringBuilder jsonBuilder)>();
+        var toolCallBuilders = new Dictionary<int, (ToolCall toolCall, StringBuilder jsonBuilder, string type)>();
         var cacheInfoEmitted = false;
 
         while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
-            
+
             if (string.IsNullOrEmpty(line))
                 continue;
 
             var trimmed = line.Trim();
-            // Remove UTF-8 BOM if present
             if (trimmed.Length > 0 && trimmed[0] == '\uFEFF')
             {
                 trimmed = trimmed.TrimStart('\uFEFF');
             }
             if (trimmed.StartsWith("event: "))
             {
-                // We can ignore event lines for now, but might be useful for more robust parsing
                 continue;
             }
-            
+
             if (trimmed.StartsWith("data:") || trimmed.StartsWith("{") || trimmed.Contains("\"type\":"))
             {
                 string jsonData = trimmed;
@@ -194,16 +229,10 @@ public class AnthropicProvider : ILLMProvider
                 AnthropicStreamResponse? streamResponse;
                 try
                 {
-                    streamResponse = JsonSerializer.Deserialize<AnthropicStreamResponse>(jsonData, jsonOptions);
+                    streamResponse = JsonSerializer.Deserialize<AnthropicStreamResponse>(jsonData, JsonOptions);
                 }
-                catch (JsonException ex)
+                catch
                 {
-                    _logger.LogWarning(ex, "Failed to parse streaming response: {JsonData}", jsonData);
-                    continue;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Unexpected error parsing streaming response: {JsonData}", jsonData);
                     continue;
                 }
 
@@ -235,21 +264,35 @@ public class AnthropicProvider : ILLMProvider
                         break;
 
                     case "content_block_start":
-                        if (streamResponse.ContentBlock?.Type == "tool_use" && streamResponse.Index.HasValue)
+                        if (streamResponse.ContentBlock != null && streamResponse.Index.HasValue)
                         {
-                            var toolCall = new ToolCall
+                            var t = streamResponse.ContentBlock.Type;
+                            if (t == "tool_use" || t == "server_tool_use" || t == "mcp_tool_use")
                             {
-                                Id = streamResponse.ContentBlock.Id ?? string.Empty,
-                                Name = streamResponse.ContentBlock.Name ?? string.Empty,
-                            };
-                            toolCallBuilders[streamResponse.Index.Value] = (toolCall, new StringBuilder());
-                            _logger.LogInformation("Started tool call stream for '{ToolName}' (ID: {ToolId}) at index {Index}", 
-                                toolCall.Name, toolCall.Id, streamResponse.Index.Value);
+                                var toolCall = new ToolCall
+                                {
+                                    Id = streamResponse.ContentBlock.Id ?? string.Empty,
+                                    Name = streamResponse.ContentBlock.Name ?? string.Empty,
+                                };
+                                toolCallBuilders[streamResponse.Index.Value] = (toolCall, new StringBuilder(), t);
+                            }
+                            else if (t == "web_search_tool_result" || t == "web_search_tool_result_error")
+                            {
+                                yield return new LLMStreamChunk
+                                {
+                                    WebSearchToolResult = new WebSearchToolResultEvent(
+                                        streamResponse.ContentBlock.ToolUseId,
+                                        streamResponse.ContentBlock.IsError,
+                                        streamResponse.ContentBlock.Content
+                                    ),
+                                    EventType = t,
+                                    IsComplete = false
+                                };
+                            }
                         }
                         break;
 
                     case "content_block_delta":
-                        // Handle tool input streaming
                         if (streamResponse.Index.HasValue && toolCallBuilders.TryGetValue(streamResponse.Index.Value, out var builder))
                         {
                             if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
@@ -260,7 +303,6 @@ public class AnthropicProvider : ILLMProvider
                                 builder.jsonBuilder.Append(partialJson.GetString());
                             }
                         }
-                        // Handle text streaming
                         if (streamResponse.Delta.ValueKind == JsonValueKind.Object &&
                             streamResponse.Delta.TryGetProperty("type", out var deltaType2) &&
                             deltaType2.GetString() == "text_delta" &&
@@ -273,39 +315,97 @@ public class AnthropicProvider : ILLMProvider
                             };
                         }
                         break;
-                    
+
                     case "content_block_stop":
                         if (streamResponse.Index.HasValue && toolCallBuilders.Remove(streamResponse.Index.Value, out var finishedBuilder))
                         {
-                            var (toolCall, jsonBuilder) = finishedBuilder;
+                            var (toolCall, jsonBuilder, t) = finishedBuilder;
                             var finalJson = jsonBuilder.ToString();
-                            LLMStreamChunk? toolChunk = null;
+                            LLMStreamChunk? pending = null;
                             try
                             {
-                                var arguments = JsonSerializer.Deserialize<JsonElement>(finalJson);
-                                _logger.LogInformation("Completed tool call stream for '{ToolName}' (ID: {ToolId}). Arguments: {Arguments}",
-                                    toolCall.Name, toolCall.Id, finalJson);
-
-                                toolChunk = new LLMStreamChunk
+                                if (t == "tool_use")
                                 {
-                                    ToolCall = new ToolCall
+                                    var arguments = JsonSerializer.Deserialize<JsonElement>(finalJson);
+                                    pending = new LLMStreamChunk
                                     {
-                                        Id = toolCall.Id,
-                                        Name = toolCall.Name,
-                                        Arguments = arguments
-                                    },
-                                    IsComplete = false
-                                };
+                                        ToolCall = new ToolCall
+                                        {
+                                            Id = toolCall.Id,
+                                            Name = toolCall.Name,
+                                            Arguments = arguments
+                                        },
+                                        IsComplete = false,
+                                        EventType = t
+                                    };
+                                }
+                                else if (t == "server_tool_use")
+                                {
+                                    string? query = null;
+                                    // Attempt robust extraction: JSON parse with fallback string search
+                                    try
+                                    {
+                                        using var jd = JsonDocument.Parse(finalJson);
+                                        if (jd.RootElement.TryGetProperty("query", out var q1)) query = q1.GetString();
+                                        if (string.IsNullOrEmpty(query) && jd.RootElement.TryGetProperty("q", out var q2)) query = q2.GetString();
+                                    }
+                                    catch 
+                                    {
+                                        var marker = "\"q\":\"";
+                                        var idx = finalJson.IndexOf(marker, StringComparison.Ordinal);
+                                        if (idx >= 0)
+                                        {
+                                            var start = idx + marker.Length;
+                                            var end = finalJson.IndexOf('"', start);
+                                            if (end > start) query = finalJson.Substring(start, end - start);
+                                        }
+                                    }
+                                    pending = new LLMStreamChunk
+                                    {
+                                        ServerToolUse = new ServerToolUseEvent(toolCall.Id, toolCall.Name, query),
+                                        EventType = t,
+                                        IsComplete = false
+                                    };
+                                }
+                                else if (t == "mcp_tool_use")
+                                {
+                                    JsonElement input;
+                                    try { input = JsonDocument.Parse(finalJson).RootElement.Clone(); }
+                                    catch { input = JsonDocument.Parse("{}").RootElement.Clone(); }
+                                    pending = new LLMStreamChunk
+                                    {
+                                        McpToolUse = new McpToolUseEvent(toolCall.Id, toolCall.Name, streamResponse.ContentBlock?.ServerName, input),
+                                        EventType = t,
+                                        IsComplete = false
+                                    };
+                                }
                             }
-                            catch (JsonException ex)
+                            catch { }
+                            if (pending == null)
                             {
-                                _logger.LogError(ex, "Failed to parse final JSON for tool call '{ToolName}' (ID: {ToolId}). JSON: {Json}",
-                                    toolCall.Name, toolCall.Id, finalJson);
+                                if (t == "server_tool_use")
+                                {
+                                    pending = new LLMStreamChunk
+                                    {
+                                        ServerToolUse = new ServerToolUseEvent(toolCall.Id, toolCall.Name, null),
+                                        EventType = t,
+                                        IsComplete = false
+                                    };
+                                }
+                                else if (t == "mcp_tool_use")
+                                {
+                                    var empty = JsonDocument.Parse("{}").RootElement.Clone();
+                                    pending = new LLMStreamChunk
+                                    {
+                                        McpToolUse = new McpToolUseEvent(toolCall.Id, toolCall.Name, streamResponse.ContentBlock?.ServerName, empty),
+                                        EventType = t,
+                                        IsComplete = false
+                                    };
+                                }
                             }
-
-                            if (toolChunk != null)
+                            if (pending != null)
                             {
-                                yield return toolChunk;
+                                yield return pending;
                             }
                         }
                         break;
@@ -317,14 +417,12 @@ public class AnthropicProvider : ILLMProvider
                             LLMUsage? finalUsage = null;
                             if (streamResponse.Usage != null)
                             {
-                                finalUsage = new LLMUsage 
-                                { 
-                                    InputTokens = tokenUsage?.InputTokens ?? 0, 
-                                    OutputTokens = streamResponse.Usage.OutputTokens 
+                                finalUsage = new LLMUsage
+                                {
+                                    InputTokens = tokenUsage?.InputTokens ?? 0,
+                                    OutputTokens = streamResponse.Usage.OutputTokens
                                 };
                             }
-                            
-                            _logger.LogInformation("Anthropic streaming response completed with reason: {StopReason}", stopReason.GetString());
                             yield return new LLMStreamChunk
                             {
                                 Usage = finalUsage,
@@ -344,8 +442,6 @@ public class AnthropicProvider : ILLMProvider
                         break;
 
                     case "message_stop":
-                        _logger.LogInformation("Anthropic streaming response stopped.");
-                        // Prefer usage from this event; fall back to any earlier captured input tokens
                         LLMUsage? completeUsage = null;
                         if (streamResponse.Usage != null)
                         {
@@ -370,18 +466,57 @@ public class AnthropicProvider : ILLMProvider
                 }
             }
         }
-        
+
         _logger.LogInformation("Finished reading Anthropic streaming response");
+    }
+
+    /// <summary>
+    /// Counts message input tokens for a request using the provider endpoint.
+    /// </summary>
+    public async Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default)
+    {
+        var req = ConvertToAnthropicRequest(request);
+        var payload = new
+        {
+            model = req.Model,
+            messages = req.Messages,
+            system = req.System,
+            tools = req.Tools
+        };
+        HttpResponseMessage? resp = null;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            resp = await _httpClient.PostAsJsonAsync("messages/count_tokens", payload, JsonOptions, cancellationToken);
+            if (resp.IsSuccessStatusCode) break;
+            if ((int)resp.StatusCode == 429 || (int)resp.StatusCode == 503)
+            {
+                var delay = GetRetryAfterDelay(resp) ?? GetBackoffWithJitter(attempt);
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+            }
+            var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError("Anthropic count_tokens error {Status}: {Body}", (int)resp.StatusCode, body);
+            resp.EnsureSuccessStatusCode();
+        }
+        if (resp == null) return 0;
+        var parsed = await resp.Content.ReadFromJsonAsync<CountTokensResponse>(JsonOptions, cancellationToken);
+        return parsed?.InputTokens ?? 0;
+    }
+
+    private sealed class CountTokensResponse
+    {
+        public int InputTokens { get; set; }
     }
 
     private static AsyncRetryPolicy<HttpResponseMessage> CreateRetryPolicy(ILogger logger)
     {
-        // Retry on 429/503 with exponential backoff + jitter (max ~8s delay total for 4 retries)
         var sleepDurations = new[] { 0.5, 1.0, 2.0, 4.0 };
         var rnd = new Random();
         return Policy
-            .HandleResult<HttpResponseMessage>(r =>
-                (int)r.StatusCode == 429 || (int)r.StatusCode == 503)
+            .HandleResult<HttpResponseMessage>(r => (int)r.StatusCode == 429 || (int)r.StatusCode == 503)
             .WaitAndRetryAsync(
                 sleepDurations.Length,
                 retryAttempt =>
@@ -394,10 +529,70 @@ public class AnthropicProvider : ILLMProvider
                 });
     }
 
+    private static TimeSpan? GetRetryAfterDelay(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("Retry-After", out var values))
+        {
+            var v = values.FirstOrDefault();
+            if (int.TryParse(v, out var seconds)) return TimeSpan.FromSeconds(seconds);
+            if (DateTimeOffset.TryParse(v, out var at))
+            {
+                var delta = at - DateTimeOffset.UtcNow;
+                if (delta > TimeSpan.Zero) return delta;
+            }
+        }
+        return null;
+    }
+
+    private static TimeSpan GetBackoffWithJitter(int attempt)
+    {
+        var steps = new[] { 0.5, 1.0, 2.0, 4.0 };
+        var idx = Math.Min(attempt, steps.Length - 1);
+        var rnd = new Random();
+        return TimeSpan.FromSeconds(steps[idx]) + TimeSpan.FromMilliseconds(rnd.Next(50, 250));
+    }
+
+    private void LogRateLimits(HttpResponseMessage response)
+    {
+        try
+        {
+            var headers = response.Headers;
+            string Get(string name) => headers.TryGetValues(name, out var vs) ? vs.FirstOrDefault() ?? string.Empty : string.Empty;
+            var reqLimit = Get("x-ratelimit-requests-limit");
+            var reqRemain = Get("x-ratelimit-requests-remaining");
+            var tokLimit = Get("x-ratelimit-tokens-limit");
+            var tokRemain = Get("x-ratelimit-tokens-remaining");
+            _logger.LogDebug("Anthropic rate limits: req {ReqRemain}/{ReqLimit}, tok {TokRemain}/{TokLimit}", reqRemain, reqLimit, tokRemain, tokLimit);
+        }
+        catch { }
+    }
+
+    private Exception CreateApiException(HttpResponseMessage response, string body)
+    {
+        var code = (int)response.StatusCode;
+        if (code == 401)
+        {
+            return new InvalidOperationException("Anthropic unauthorized. Check API key.");
+        }
+        if (code == 429)
+        {
+            var retry = GetRetryAfterDelay(response);
+            var msg = retry.HasValue ? $"Rate limit exceeded. Retry after {retry.Value.TotalSeconds:F0}s." : "Rate limit exceeded.";
+            return new InvalidOperationException(msg);
+        }
+        if (code >= 500)
+        {
+            return new InvalidOperationException("Anthropic server error. Please retry.");
+        }
+        var snippet = string.Empty;
+        try { snippet = body?.Length > 300 ? body.Substring(0, 300) + "…" : body ?? string.Empty; } catch { }
+        return new InvalidOperationException($"Anthropic error {(int)response.StatusCode}: {snippet}");
+    }
+
     private AnthropicRequest ConvertToAnthropicRequest(LLMRequest request)
     {
         var (messages, systemPrompt) = ConvertMessages(request.Messages, request.SystemPrompt);
-        var tools = ConvertTools(request.Tools);
+        var tools = ConvertTools(request.Tools, request.UseEphemeralCache);
         var systemContent = BuildSystemContent(request, systemPrompt);
 
         return new AnthropicRequest
@@ -411,13 +606,12 @@ public class AnthropicProvider : ILLMProvider
         };
     }
 
-    private List<AnthropicTool>? ConvertTools(IReadOnlyList<LLMTool>? tools)
+    private List<AnthropicTool>? ConvertTools(IReadOnlyList<LLMTool>? tools, bool useEphemeral)
     {
         if (tools == null || tools.Count == 0)
             return null;
 
         var anthropicTools = new List<AnthropicTool>();
-        
         foreach (var tool in tools)
         {
             anthropicTools.Add(new AnthropicTool
@@ -427,24 +621,15 @@ public class AnthropicProvider : ILLMProvider
                 InputSchema = tool.Parameters
             });
         }
-        
+        if (useEphemeral && anthropicTools.Count > 0)
+        {
+            anthropicTools[^1].CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral", Ttl = _ephemeralTtl };
+        }
         return anthropicTools;
     }
 
     private List<AnthropicSystemContent>? BuildSystemContent(LLMRequest request, string? systemPrompt)
     {
-        if (!string.IsNullOrEmpty(request.SystemPromptCacheId))
-        {
-            return new List<AnthropicSystemContent>
-            {
-                new AnthropicSystemContent
-                {
-                    Type = "cache",
-                    CacheId = request.SystemPromptCacheId
-                }
-            };
-        }
-
         if (string.IsNullOrWhiteSpace(systemPrompt))
         {
             return null;
@@ -458,7 +643,7 @@ public class AnthropicProvider : ILLMProvider
 
         if (request.UseEphemeralCache)
         {
-            entry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral" };
+            entry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral", Ttl = _ephemeralTtl };
         }
 
         return new List<AnthropicSystemContent> { entry };
@@ -476,7 +661,7 @@ public class AnthropicProvider : ILLMProvider
                 MessageRole.System => "system",
                 MessageRole.User => "user",
                 MessageRole.Assistant => "assistant",
-                MessageRole.Tool => "user", // Tool results are sent with the 'user' role
+                MessageRole.Tool => "user",
                 _ => null
             };
 
@@ -487,23 +672,20 @@ public class AnthropicProvider : ILLMProvider
                 var textPart = message.Parts.OfType<TextPart>().FirstOrDefault();
                 if (textPart != null)
                 {
-                    extractedSystemPrompt = string.IsNullOrEmpty(extractedSystemPrompt) 
-                        ? textPart.Content 
+                    extractedSystemPrompt = string.IsNullOrEmpty(extractedSystemPrompt)
+                        ? textPart.Content
                         : $"{extractedSystemPrompt}\n\n{textPart.Content}";
                 }
                 continue;
             }
 
             var contentParts = new List<object>();
-            
-            // Text parts
             var textContent = string.Join("\n", message.Parts.OfType<TextPart>().Select(p => p.Content));
             if (!string.IsNullOrEmpty(textContent))
             {
                 contentParts.Add(new AnthropicTextContent { Text = textContent });
             }
 
-            // Tool call parts (from assistant)
             var toolCallParts = message.Parts.OfType<ToolCallPart>().ToList();
             if (toolCallParts.Any())
             {
@@ -517,12 +699,11 @@ public class AnthropicProvider : ILLMProvider
                     });
                 }
             }
-            
-            // Tool result parts (from user)
+
             var toolResultParts = message.Parts.OfType<ToolResultPart>().ToList();
             if (toolResultParts.Any())
             {
-                role = "user"; // Tool results must be in a user message
+                role = "user";
                 foreach (var part in toolResultParts)
                 {
                     contentParts.Add(new AnthropicToolResultContent
@@ -537,14 +718,10 @@ public class AnthropicProvider : ILLMProvider
 
             if (contentParts.Count > 0)
             {
-                // If the message was originally an assistant message but we are adding tool calls,
-                // ensure the role is correct.
                 if (message.Role == MessageRole.Assistant)
                 {
                     role = "assistant";
                 }
-
-                // Always send content as an array of content blocks per Anthropic Messages API
                 anthropicMessages.Add(new AnthropicMessage
                 {
                     Role = role,
@@ -565,8 +742,7 @@ public class AnthropicProvider : ILLMProvider
     private LLMResponse ConvertFromAnthropicResponse(AnthropicResponse response)
     {
         var content = response.Content.FirstOrDefault(c => c.Type == "text")?.Text ?? string.Empty;
-        
-        // Extract tool calls from response
+
         var toolCalls = response.Content
             .Where(c => c.Type == "tool_use")
             .Select(c => new ToolCall
@@ -577,14 +753,7 @@ public class AnthropicProvider : ILLMProvider
             })
             .ToList();
 
-        // Log tool call information
-        _logger.LogInformation("Anthropic response: Content blocks={ContentBlocks}, Tool calls found={ToolCallCount}", 
-            response.Content.Count, toolCalls.Count);
-        
-        if (toolCalls.Any())
-        {
-            _logger.LogInformation("Found tool calls: {ToolNames}", string.Join(", ", toolCalls.Select(t => t.Name)));
-        }
+        _logger.LogInformation("Anthropic response: Content blocks={ContentBlocks}, Tool calls found={ToolCallCount}", response.Content.Count, toolCalls.Count);
 
         var cacheInfo = ConvertCacheControl(response.CacheControl)
             ?? response.Content.Select(c => ConvertCacheControl(c.CacheControl)).FirstOrDefault(info => info != null);
@@ -613,6 +782,15 @@ public class AnthropicProvider : ILLMProvider
             "stop_sequence" => LLMFinishReason.Stop,
             _ => LLMFinishReason.Stop
         };
+    }
+
+    private static string MapEphemeralTtl(TimeSpan ttl)
+    {
+        var five = TimeSpan.FromMinutes(5);
+        var oneHour = TimeSpan.FromHours(1);
+        var pickFive = Math.Abs((ttl - five).TotalMinutes);
+        var pickHour = Math.Abs((ttl - oneHour).TotalMinutes);
+        return pickFive <= pickHour ? "5m" : "1h";
     }
 
     private LLMPromptCacheInfo? ConvertCacheControl(AnthropicCacheControlResponse? cacheControl)
@@ -667,7 +845,6 @@ public class AnthropicProvider : ILLMProvider
 
     private decimal GetModelInputCost(string modelId)
     {
-        // Costs per 1M tokens as of August 2024
         return modelId switch
         {
             AnthropicModels.ClaudeOpus41 => 15.00m,
@@ -681,7 +858,6 @@ public class AnthropicProvider : ILLMProvider
 
     private decimal GetModelOutputCost(string modelId)
     {
-        // Costs per 1M tokens as of August 2024
         return modelId switch
         {
             AnthropicModels.ClaudeOpus41 => 18.75m,
