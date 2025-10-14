@@ -74,7 +74,7 @@ public class ProviderBootstrap
                  .AddConsole();
             });
             var providerLogger = providerLoggerFactory.CreateLogger<AnthropicProvider>();
-            var provider = new AnthropicProvider(http, config, providerLogger);
+            var provider = new AnthropicProvider(http, config, new CodePunk.Core.Caching.PromptCacheOptions(), providerLogger);
             CodePunk.Core.Services.RuntimeProviderRegistry.RegisterOrUpdate(provider);
         }
     }

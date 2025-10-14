@@ -50,6 +50,7 @@ public class PlanGenerateAiSafetyTests : ConsoleTestBase
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
         public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, new []{ new TextPart("many") }));
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _p.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() }, cancellationToken);
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private class UnsafeLLMService : ILLMService
@@ -65,6 +66,7 @@ public class PlanGenerateAiSafetyTests : ConsoleTestBase
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _p.StreamAsync(request, cancellationToken);
         public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, new []{ new TextPart("unsafe") }));
     public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _p.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() }, cancellationToken);
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     [Fact]

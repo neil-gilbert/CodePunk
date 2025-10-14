@@ -36,7 +36,8 @@ public class PlanGenerateAiInvalidJsonTests : ConsoleTestBase
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, CancellationToken ct = default) => _provider.StreamAsync(request, ct);
         public IAsyncEnumerable<LLMStreamChunk> StreamAsync(string providerName, LLMRequest request, CancellationToken cancellationToken = default) => _provider.StreamAsync(request, cancellationToken);
         public Task<Message> SendMessageAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => Task.FromResult(Message.Create(conversationHistory.Last().SessionId, MessageRole.Assistant, new []{ new TextPart("bad") }));
-    public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _provider.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() });
+        public IAsyncEnumerable<LLMStreamChunk> SendMessageStreamAsync(IList<Message> conversationHistory, CancellationToken cancellationToken = default) => StreamAsync(new LLMRequest{ ModelId = _provider.Models.First().Id, Messages = conversationHistory.ToList().AsReadOnly() });
+        public Task<int> CountTokensAsync(LLMRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     [Fact]

@@ -75,7 +75,6 @@ public record LLMRequest
     public double Temperature { get; init; } = 0.7;
     public double TopP { get; init; } = 1.0;
     public bool UseEphemeralCache { get; init; }
-    public string? SystemPromptCacheId { get; init; }
 }
 
 /// <summary>
@@ -101,7 +100,17 @@ public record LLMStreamChunk
     public LLMFinishReason? FinishReason { get; init; }
     public bool IsComplete { get; init; }
     public LLMPromptCacheInfo? PromptCache { get; init; }
+    public string? EventType { get; init; }
+    public ServerToolUseEvent? ServerToolUse { get; init; }
+    public McpToolUseEvent? McpToolUse { get; init; }
+    public WebSearchToolResultEvent? WebSearchToolResult { get; init; }
 }
+
+public record ServerToolUseEvent(string Id, string Name, string? Query);
+
+public record McpToolUseEvent(string Id, string Name, string? ServerName, JsonElement Input);
+
+public record WebSearchToolResultEvent(string? ToolUseId, bool? IsError, JsonElement? Content);
 
 /// <summary>
 /// Tool definition for LLM function calling
