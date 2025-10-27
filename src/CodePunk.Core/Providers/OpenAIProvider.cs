@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CodePunk.Core.Abstractions;
@@ -162,16 +164,27 @@ public class OpenAIProvider : ILLMProvider
     public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var openAIRequest = ConvertToOpenAIRequest(request, stream: true);
-        
-        var response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
+
+        // Serialize request and send with ResponseHeadersRead to enable true streaming (SSE)
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+        var payload = JsonSerializer.Serialize(openAIRequest, _jsonOptions);
+        httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+        httpRequest.Headers.Accept.Clear();
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var line = await reader.ReadLineAsync();
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null) break; // end of stream
             if (string.IsNullOrEmpty(line) || !line.StartsWith("data: "))
                 continue;
 
