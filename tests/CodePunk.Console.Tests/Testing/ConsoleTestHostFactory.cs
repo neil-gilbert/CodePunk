@@ -3,6 +3,7 @@ using CodePunk.Console.Stores;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Chat;
 using CodePunk.Core.Services;
+using CodePunk.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moq;
@@ -18,7 +19,8 @@ public static class ConsoleTestHostFactory
         Mock<ISessionFileStore>? sessionStoreMock = null,
         Mock<IAgentStore>? agentStoreMock = null,
         Mock<ILLMService>? llmMock = null,
-        bool disableDefaultLLM = false)
+        bool disableDefaultLLM = false,
+        bool useRealAuthStore = false)
     {
         sessionStoreMock ??= new Mock<ISessionFileStore>();
         agentStoreMock ??= new Mock<IAgentStore>();
@@ -27,6 +29,19 @@ public static class ConsoleTestHostFactory
         var builder = Host.CreateApplicationBuilder(Array.Empty<string>());
         builder.Services.AddLogging();
         builder.Services.AddCodePunkConsole();
+
+        // Register IAuthStore (now in Infrastructure layer)
+        if (useRealAuthStore)
+        {
+            builder.Services.AddSingleton<IAuthStore, AuthFileStore>();
+        }
+        else
+        {
+            var mockAuthStore = new Mock<IAuthStore>();
+            mockAuthStore.Setup(a => a.LoadAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<string, string>());
+            builder.Services.AddSingleton(mockAuthStore.Object);
+        }
 
         builder.Services.AddSingleton(sessionStoreMock.Object);
         builder.Services.AddSingleton(agentStoreMock.Object);

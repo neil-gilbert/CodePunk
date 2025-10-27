@@ -3,9 +3,6 @@ using System.Text.Json.Serialization;
 
 namespace CodePunk.Core.Models;
 
-/// <summary>
-/// Represents a message in a chat session
-/// </summary>
 public record Message
 {
     public required string Id { get; init; }
@@ -18,12 +15,9 @@ public record Message
     public DateTimeOffset UpdatedAt { get; init; }
     public DateTimeOffset? FinishedAt { get; init; }
 
-    /// <summary>
-    /// Creates a new message with generated ID and timestamp
-    /// </summary>
     public static Message Create(
-        string sessionId, 
-        MessageRole role, 
+        string sessionId,
+        MessageRole role,
         IReadOnlyList<MessagePart> parts,
         string? model = null,
         string? provider = null)
@@ -51,9 +45,6 @@ public enum MessageRole
     Tool
 }
 
-/// <summary>
-/// Base class for different types of message content
-/// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(TextPart), "text")]
 [JsonDerivedType(typeof(ToolCallPart), "tool_call")]
@@ -99,3 +90,4 @@ public enum MessagePartType
     ToolResult,
     Image
 }
+

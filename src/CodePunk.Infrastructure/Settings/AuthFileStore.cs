@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace CodePunk.Console.Stores;
+namespace CodePunk.Infrastructure.Settings;
 
 /// <summary>
 /// File based implementation storing provider -> apiKey in JSON.

@@ -8,11 +8,11 @@ using Spectre.Console;
 using System.Text.RegularExpressions;
 using System.Text;
 
-namespace CodePunk.Core.Services;
+namespace CodePunk.Console.Adapters;
 
-public class ConsoleApprovalService : IApprovalService
+public class SpectreApprovalService : IApprovalService
 {
-    private readonly ILogger<ConsoleApprovalService> _logger;
+    private readonly ILogger<SpectreApprovalService> _logger;
     private readonly ISyntaxHighlighter? _syntaxHighlighter;
     private bool _autoApproveSession = false;
 
@@ -20,8 +20,8 @@ public class ConsoleApprovalService : IApprovalService
     private const string DeletionBackground = "indianred";
     private const string ContextBackground = "grey11";
 
-    public ConsoleApprovalService(
-        ILogger<ConsoleApprovalService> logger,
+    public SpectreApprovalService(
+        ILogger<SpectreApprovalService> logger,
         ISyntaxHighlighter? syntaxHighlighter = null)
     {
         _logger = logger;
@@ -43,8 +43,8 @@ public class ConsoleApprovalService : IApprovalService
                 return new ApprovalResult(true);
             }
 
-            Console.WriteLine($"\nFile Edit Request: {request.FilePath}");
-            Console.WriteLine($"Changes: +{stats.LinesAdded}/-{stats.LinesRemoved} lines, +{stats.CharsAdded}/-{stats.CharsRemoved} chars");
+            System.Console.WriteLine($"\nFile Edit Request: {request.FilePath}");
+            System.Console.WriteLine($"Changes: +{stats.LinesAdded}/-{stats.LinesRemoved} lines, +{stats.CharsAdded}/-{stats.CharsRemoved} chars");
 
             if (!string.IsNullOrEmpty(diff))
             {
@@ -378,5 +378,5 @@ public class ConsoleApprovalService : IApprovalService
         AnsiConsole.MarkupLine("[green]✓[/] Enabled auto-approval for this session. All future changes will be automatically approved.");
         return new ApprovalResult(true);
     }
-
 }
+

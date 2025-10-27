@@ -1,0 +1,49 @@
+@namespace CodePunk.Tui.Components
+
+@using Spectre.Console
+@using RazorConsole.Components
+@using CodePunk.Tui.Services
+@using CodePunk.Tui.Design
+
+@inject IApprovalPromptService Prompt
+@implements IDisposable
+
+@code {
+    private static string Escape(string s) => Spectre.Console.Markup.Escape(s ?? string.Empty);
+
+    protected override void OnInitialized()
+    {
+        // Re-render this dialog whenever the approval prompt changes
+        Prompt.Changed += OnPromptChanged;
+    }
+
+    private void OnPromptChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Prompt.Changed -= OnPromptChanged;
+    }
+}
+
+@if (Prompt.Current is { } pending)
+{
+    <Padder Padding="@(new(0,1,0,0))">
+        <Rows>
+            <Markup Content="📝 Review Changes" Foreground="@ColorPalette.Brand.Gold" />
+            <Markup Content="@($"File: {Escape(pending.Request.FilePath)}")" />
+            <Markup Content="@($"+{pending.Stats.LinesAdded}/-{pending.Stats.LinesRemoved} lines, +{pending.Stats.CharsAdded}/-{pending.Stats.CharsRemoved} chars")" Foreground="@Color.Grey" />
+            @if (!string.IsNullOrEmpty(pending.Diff))
+            {
+                <DiffPreview Diff="@pending.Diff" Path="@pending.Request.FilePath" />
+            }
+            <Columns>
+                <TextButton Content="Approve" OnClick="@(() => Prompt.ApproveOnce())" BackgroundColor="@Color.Green" FocusedColor="@Color.SpringGreen1" />
+                <TextButton Content="Approve All (session)" OnClick="@(() => Prompt.ApproveAll())" BackgroundColor="@Color.Yellow" FocusedColor="@Color.Khaki1" />
+                <TextButton Content="Cancel" OnClick="@(() => Prompt.Cancel())" BackgroundColor="@Color.Red" FocusedColor="@Color.IndianRed1" />
+            </Columns>
+        </Rows>
+    </Padder>
+}

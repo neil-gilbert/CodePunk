@@ -1,0 +1,82 @@
+@namespace CodePunk.Tui.Components
+
+@using Spectre.Console
+@using RazorConsole.Components
+@using CodePunk.Core.Services
+@using CodePunk.Core.Abstractions
+@using CodePunk.Core.Models
+@using CodePunk.Infrastructure.Settings
+
+@inject ILLMService Llm
+@inject IDefaultsStore Defaults
+@inject CodePunk.Core.Chat.InteractiveChatSession Chat
+
+@code {
+    private IReadOnlyList<ILLMProvider> _providers = Array.Empty<ILLMProvider>();
+    private string? _activeProvider;
+    private string? _activeModel;
+
+    protected override void OnInitialized()
+    {
+        _providers = Llm.GetProviders();
+        _activeProvider = Chat.DefaultProvider;
+        _activeModel = Chat.DefaultModel;
+    }
+
+    private async Task UseProvider(string provider)
+    {
+        _activeProvider = provider;
+        Chat.UpdateDefaults(provider, _activeModel);
+        await Defaults.SaveAsync(new CodePunk.Infrastructure.Settings.CodePunkDefaults(provider, _activeModel));
+        StateHasChanged();
+    }
+
+    private async Task UseModel(string model)
+    {
+        _activeModel = model;
+        Chat.UpdateDefaults(_activeProvider, model);
+        await Defaults.SaveAsync(new CodePunk.Infrastructure.Settings.CodePunkDefaults(_activeProvider, model));
+        StateHasChanged();
+    }
+}
+
+<Padder Padding="@(new(0,1,0,1))">
+    <Panel Title="Defaults">
+        <Rows>
+            <Markup Content="@($"Provider: {(_activeProvider ?? "(none)")}")" />
+            <Markup Content="@($"Model: {(_activeModel ?? "(default)")}")" Foreground="@Color.Grey62" />
+            @if (_providers.Count == 0)
+            {
+                <Markup Content="No providers registered. Set keys or run setup." Foreground="@Color.Grey" />
+            }
+            else
+            {
+                <Markup Content="Providers" Foreground="@Color.Grey" />
+                <Columns>
+                    @foreach (var p in _providers)
+                    {
+                        var name = p.Name;
+                        <TextButton Content="@name" OnClick="@(() => UseProvider(name))" BackgroundColor="@Color.Grey19" FocusedColor="@Color.Grey50" />
+                    }
+                </Columns>
+
+                @if (!string.IsNullOrWhiteSpace(_activeProvider))
+                {
+                    var selected = _providers.FirstOrDefault(x => string.Equals(x.Name, _activeProvider, StringComparison.OrdinalIgnoreCase));
+                    if (selected != null && selected.Models.Count > 0)
+                    {
+                        <Markup Content="@($"Models ({selected.Name})")" Foreground="@Color.Grey" />
+                        <Columns>
+                            @foreach (var m in selected.Models.Take(10))
+                            {
+                                var id = m.Id;
+                                <TextButton Content="@id" OnClick="@(() => UseModel(id))" BackgroundColor="@Color.Grey19" FocusedColor="@Color.Grey50" />
+                            }
+                        </Columns>
+                    }
+                }
+            }
+        </Rows>
+    </Panel>
+    </Padder>
+

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Diagnostics;
 using Spectre.Console;
+using CodePunk.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using CodePunk.Core.Abstractions;
 using CodePunk.Console.Themes;

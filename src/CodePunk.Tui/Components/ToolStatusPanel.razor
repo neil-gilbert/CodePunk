@@ -1,0 +1,68 @@
+@namespace CodePunk.Tui.Components
+
+@using System
+@using System.Collections.Generic
+@using RazorConsole.Components
+@using Spectre.Console
+@using CodePunk.Tui.Design
+
+@inherits Microsoft.AspNetCore.Components.ComponentBase
+
+@if (Updates?.Count > 0)
+{
+    <Panel Title="Tool Status">
+        <Rows>
+            @foreach (var u in Updates!)
+            {
+                <Padder Padding="@(new(0,1,0,0))">
+                    <Markup Content="@GetTitle(u)" Foreground="@(u.IsError ? ColorPalette.Brand.Coral : ColorPalette.Brand.Teal)" />
+                    @if (!string.IsNullOrEmpty(u.FilePath))
+                    {
+                        <Markup Content="@Escape(u.FilePath)" Foreground="@Color.Grey" Decoration="@Decoration.Dim" />
+                    }
+                    @if (!string.IsNullOrEmpty(u.Preview))
+                    {
+                        <Markup Content="@Escape(u.Preview)" Foreground="@Color.Grey62" />
+                    }
+                    @if (u.IsTruncated)
+                    {
+                        <Markup Content="@($"… showing first {u.MaxLines} lines of {u.OriginalLineCount}")" Foreground="@Color.Grey" Decoration="@Decoration.Dim" />
+                    }
+                </Padder>
+            }
+        </Rows>
+    </Panel>
+}
+else
+{
+    <Panel Title="Tool Status">
+        <Markup Content="No tool activity yet" Foreground="@Color.Grey" Decoration="@Decoration.Dim" />
+    </Panel>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ToolStatusUpdate>? Updates { get; set; }
+
+    private static string Escape(string s)
+        => Spectre.Console.Markup.Escape(s ?? string.Empty);
+
+    private static string GetTitle(ToolStatusUpdate u)
+    {
+        var icon = u.IsError ? "❌" : "✅";
+        return $"{icon} {u.ToolName}";
+    }
+
+    public sealed class ToolStatusUpdate
+    {
+        public required string ToolName { get; init; }
+        public string? FilePath { get; init; }
+        public string Preview { get; init; } = string.Empty;
+        public bool IsTruncated { get; init; }
+        public int OriginalLineCount { get; init; }
+        public int MaxLines { get; init; }
+        public bool IsError { get; init; }
+        public string? LanguageId { get; init; }
+    }
+}
+

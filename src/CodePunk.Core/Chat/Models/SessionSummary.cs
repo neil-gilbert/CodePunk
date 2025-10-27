@@ -12,3 +12,4 @@ namespace CodePunk.Core.Models
         public int TotalMessages { get; set; }
     }
 }
+

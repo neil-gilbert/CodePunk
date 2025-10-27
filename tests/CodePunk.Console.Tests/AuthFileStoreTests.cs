@@ -1,4 +1,5 @@
 using CodePunk.Console.Stores;
+using CodePunk.Infrastructure.Settings;
 using Xunit;
 
 namespace CodePunk.Console.Tests;
