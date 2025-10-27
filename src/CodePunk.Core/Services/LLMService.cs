@@ -144,6 +144,14 @@ public class LLMService : ILLMService
             : provider.Models.FirstOrDefault()?.Id ?? "gpt-4o";
 
         var msgs = messages.ToList();
+        // Token-aware truncation: trim history to fit model context with headroom for completion
+        try
+        {
+            var model = provider.Models.FirstOrDefault(m => m.Id == modelId);
+            var contextWindow = model?.ContextWindow > 0 ? model!.ContextWindow : 4096;
+            msgs = TruncateMessagesToBudget(msgs, systemPrompt, contextWindow);
+        }
+        catch { }
         var hasAssistantOrTool = msgs.Any(m => m.Role == MessageRole.Assistant || m.Role == MessageRole.Tool);
         var allTools = _toolService.GetLLMTools();
         IReadOnlyList<LLMTool>? toolsToSend = allTools;
@@ -165,6 +173,58 @@ public class LLMService : ILLMService
             SystemPrompt = systemPrompt
         };
         return request;
+    }
+
+    private static List<Message> TruncateMessagesToBudget(List<Message> allMessages, string? systemPrompt, int contextWindow)
+    {
+        // Reserve headroom for completion and tool/status chatter
+        var generationHeadroom = Math.Max(512, (int)Math.Round(contextWindow * 0.25));
+        var promptBudget = Math.Max(1024, contextWindow - generationHeadroom);
+
+        var messages = new List<Message>(allMessages);
+        if (messages.Count == 0) return messages;
+
+        while (EstimateTokens(messages, systemPrompt) > promptBudget && messages.Count > 1)
+        {
+            // Remove the earliest non-system message. If followed by a Tool message, remove both together.
+            var idx = messages.FindIndex(m => m.Role != MessageRole.System);
+            if (idx < 0) break;
+            if (idx + 1 < messages.Count && messages[idx + 1].Role == MessageRole.Tool)
+            {
+                messages.RemoveAt(idx + 1);
+            }
+            messages.RemoveAt(idx);
+        }
+
+        return messages;
+    }
+
+    private static int EstimateTokens(IEnumerable<Message> messages, string? systemPrompt)
+    {
+        // Rough heuristic: ~4 characters per token
+        long chars = 0;
+        if (!string.IsNullOrEmpty(systemPrompt)) chars += systemPrompt!.Length;
+
+        foreach (var m in messages)
+        {
+            foreach (var part in m.Parts)
+            {
+                switch (part)
+                {
+                    case TextPart t:
+                        chars += t.Content?.Length ?? 0;
+                        break;
+                    case ToolCallPart tc:
+                        try { chars += tc.Arguments.GetRawText().Length; } catch { }
+                        break;
+                    case ToolResultPart tr:
+                        chars += tr.Content?.Length ?? 0;
+                        break;
+                }
+            }
+        }
+
+        return (int)Math.Ceiling(chars / 4.0);
     }
 
     private static Message ConvertResponseToMessage(LLMResponse response, string sessionId, string providerName)
