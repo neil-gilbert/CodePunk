@@ -75,6 +75,18 @@ public record LLMRequest
     public double Temperature { get; init; } = 0.7;
     public double TopP { get; init; } = 1.0;
     public bool UseEphemeralCache { get; init; }
+    public string[]? Stop { get; init; }
+    public int? Seed { get; init; }
+    public double? FrequencyPenalty { get; init; }
+    public double? PresencePenalty { get; init; }
+    /// <summary>
+    /// Provider hint for tool invocation behavior: "auto" | "required" | "none"
+    /// </summary>
+    public string? ToolChoice { get; init; }
+    /// <summary>
+    /// Optional structured-output configuration (e.g., JSON/JSON schema)
+    /// </summary>
+    public LLMResponseFormat? ResponseFormat { get; init; }
 }
 
 /// <summary>
@@ -104,6 +116,28 @@ public record LLMStreamChunk
     public ServerToolUseEvent? ServerToolUse { get; init; }
     public McpToolUseEvent? McpToolUse { get; init; }
     public WebSearchToolResultEvent? WebSearchToolResult { get; init; }
+}
+
+/// <summary>
+/// Response formatting preferences. When Type is "json_schema", JsonSchema should be provided.
+/// For OpenAI this maps to response_format: { type: "json_schema", json_schema: { name, schema } }.
+/// </summary>
+public sealed record LLMResponseFormat
+{
+    /// <summary>
+    /// "text" | "json_object" | "json_schema"
+    /// </summary>
+    public required string Type { get; init; }
+
+    /// <summary>
+    /// Optional schema name for providers that require one (e.g., OpenAI json_schema name)
+    /// </summary>
+    public string? SchemaName { get; init; }
+
+    /// <summary>
+    /// Raw JSON schema when Type == "json_schema".
+    /// </summary>
+    public JsonElement? JsonSchema { get; init; }
 }
 
 public record ServerToolUseEvent(string Id, string Name, string? Query);

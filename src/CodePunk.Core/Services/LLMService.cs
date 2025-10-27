@@ -162,7 +162,9 @@ public class LLMService : ILLMService
             Tools = toolsToSend,
             MaxTokens = 4096,
             Temperature = 0.7,
-            SystemPrompt = systemPrompt
+            SystemPrompt = systemPrompt,
+            // Encourage a tool call on first meaningful turn when we've restricted the tool set
+            ToolChoice = !hasAssistantOrTool ? "required" : null
         };
         return request;
     }
