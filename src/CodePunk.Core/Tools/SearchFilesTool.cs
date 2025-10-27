@@ -1,7 +1,9 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CodePunk.Core.Services;
+using CodePunk.Core.Utils;
 
 namespace CodePunk.Core.Tools;
 
@@ -17,86 +19,26 @@ public class SearchFilesTool : ITool
         "Returns matching lines with file paths and line numbers. " +
         "Can filter files by glob pattern.";
 
-    public JsonElement Parameters => JsonSerializer.SerializeToElement(new
-    {
-        type = "object",
-        properties = new
-        {
-            pattern = new
-            {
-                type = "string",
-                description = "The regular expression pattern to search for (e.g., function\\s+myFunction)"
-            },
-            path = new
-            {
-                type = "string",
-                description = "Optional: The absolute path to the directory to search within. Defaults to current directory."
-            },
-            include = new
-            {
-                type = "string",
-                description = "Optional: A glob pattern to filter which files are searched (e.g., *.cs, src/**/*.txt)"
-            },
-            case_sensitive = new
-            {
-                type = "boolean",
-                description = "Optional: Whether the search should be case-sensitive. Defaults to false."
-            }
-        },
-        required = new[] { "pattern" }
-    });
+    public JsonElement Parameters => JsonSchemaGenerator.Generate<SearchFilesArgs>();
 
     public async Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
         try
         {
-            if (!arguments.TryGetProperty("pattern", out var patternElement))
+            if (!ToolArgumentBinder.TryBindAndValidate<SearchFilesArgs>(arguments, out var args, out var error))
             {
-                return new ToolResult
-                {
-                    Content = "Missing required parameter: pattern",
-                    IsError = true,
-                    ErrorMessage = "pattern parameter is required"
-                };
+                return new ToolResult { Content = error ?? "Invalid arguments", IsError = true, ErrorMessage = error };
             }
 
-            var pattern = patternElement.GetString();
-            if (string.IsNullOrWhiteSpace(pattern))
-            {
-                return new ToolResult
-                {
-                    Content = "Invalid pattern",
-                    IsError = true,
-                    ErrorMessage = "Pattern cannot be empty"
-                };
-            }
-
-            var searchPath = arguments.TryGetProperty("path", out var pathElement)
-                ? pathElement.GetString()
-                : Directory.GetCurrentDirectory();
-
-            if (string.IsNullOrWhiteSpace(searchPath))
-            {
-                searchPath = Directory.GetCurrentDirectory();
-            }
-
+            var pattern = args!.Pattern!;
+            var searchPath = string.IsNullOrWhiteSpace(args.Path) ? Directory.GetCurrentDirectory() : args.Path!;
             if (!Directory.Exists(searchPath))
             {
-                return new ToolResult
-                {
-                    Content = $"Directory not found: {searchPath}",
-                    IsError = true,
-                    ErrorMessage = $"Directory does not exist: {searchPath}"
-                };
+                return new ToolResult { Content = $"Directory not found: {searchPath}", IsError = true, ErrorMessage = $"Directory does not exist: {searchPath}" };
             }
 
-            var includePattern = arguments.TryGetProperty("include", out var includeElement)
-                ? includeElement.GetString()
-                : null;
-
-            var caseSensitive = arguments.TryGetProperty("case_sensitive", out var caseElement)
-                ? caseElement.GetBoolean()
-                : false;
+            var includePattern = args.Include;
+            var caseSensitive = args.CaseSensitive ?? false;
 
             Regex searchRegex;
             try
@@ -354,4 +296,20 @@ public class SearchFilesTool : ITool
         public int LineNumber { get; set; }
         public string LineContent { get; set; } = string.Empty;
     }
+}
+
+public class SearchFilesArgs
+{
+    [Required]
+    [Display(Description = "The regular expression pattern to search for (e.g., function\\s+myFunction)")]
+    public string? Pattern { get; set; }
+
+    [Display(Description = "Optional: Absolute path to the directory to search within. Defaults to current directory.")]
+    public string? Path { get; set; }
+
+    [Display(Description = "Optional: Glob pattern to filter which files are searched (e.g., *.cs, src/**/*.txt)")]
+    public string? Include { get; set; }
+
+    [Display(Description = "Optional: Whether the search should be case-sensitive. Defaults to false.")]
+    public bool? CaseSensitive { get; set; }
 }

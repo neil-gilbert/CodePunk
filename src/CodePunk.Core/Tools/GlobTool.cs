@@ -1,7 +1,9 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CodePunk.Core.Services;
+using CodePunk.Core.Utils;
 
 namespace CodePunk.Core.Tools;
 
@@ -14,77 +16,24 @@ public class GlobTool : ITool
         "Returns absolute paths sorted by modification time (newest first). " +
         "Supports recursive search with ** patterns.";
 
-    public JsonElement Parameters => JsonSerializer.SerializeToElement(new
-    {
-        type = "object",
-        properties = new
-        {
-            pattern = new
-            {
-                type = "string",
-                description = "The glob pattern to match (e.g., *.cs, src/**/*.txt)"
-            },
-            path = new
-            {
-                type = "string",
-                description = "Optional: The absolute path to the directory to search within. Defaults to current directory."
-            },
-            case_sensitive = new
-            {
-                type = "boolean",
-                description = "Optional: Whether the search should be case-sensitive. Defaults to false."
-            }
-        },
-        required = new[] { "pattern" }
-    });
+    public JsonElement Parameters => JsonSchemaGenerator.Generate<GlobArgs>();
 
     public async Task<ToolResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
         try
         {
-            if (!arguments.TryGetProperty("pattern", out var patternElement))
+            if (!ToolArgumentBinder.TryBindAndValidate<GlobArgs>(arguments, out var args, out var error))
             {
-                return new ToolResult
-                {
-                    Content = "Missing required parameter: pattern",
-                    IsError = true,
-                    ErrorMessage = "pattern parameter is required"
-                };
+                return new ToolResult { Content = error ?? "Invalid arguments", IsError = true, ErrorMessage = error };
             }
 
-            var pattern = patternElement.GetString();
-            if (string.IsNullOrWhiteSpace(pattern))
-            {
-                return new ToolResult
-                {
-                    Content = "Invalid pattern",
-                    IsError = true,
-                    ErrorMessage = "Pattern cannot be empty"
-                };
-            }
-
-            var searchPath = arguments.TryGetProperty("path", out var pathElement)
-                ? pathElement.GetString()
-                : Directory.GetCurrentDirectory();
-
-            if (string.IsNullOrWhiteSpace(searchPath))
-            {
-                searchPath = Directory.GetCurrentDirectory();
-            }
-
+            var pattern = args!.Pattern!;
+            var searchPath = string.IsNullOrWhiteSpace(args.Path) ? Directory.GetCurrentDirectory() : args.Path!;
             if (!Directory.Exists(searchPath))
             {
-                return new ToolResult
-                {
-                    Content = $"Directory not found: {searchPath}",
-                    IsError = true,
-                    ErrorMessage = $"Directory does not exist: {searchPath}"
-                };
+                return new ToolResult { Content = $"Directory not found: {searchPath}", IsError = true, ErrorMessage = $"Directory does not exist: {searchPath}" };
             }
-
-            var caseSensitive = arguments.TryGetProperty("case_sensitive", out var caseElement)
-                ? caseElement.GetBoolean()
-                : false;
+            var caseSensitive = args.CaseSensitive ?? false;
 
             var files = await Task.Run(() => FindMatchingFiles(searchPath, pattern, caseSensitive), cancellationToken);
 
@@ -192,4 +141,17 @@ public class GlobTool : ITool
         var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
         return new Regex(regexPattern, options);
     }
+}
+
+public class GlobArgs
+{
+    [Required]
+    [Display(Description = "The glob pattern to match (e.g., *.cs, src/**/*.txt)")]
+    public string? Pattern { get; set; }
+
+    [Display(Description = "Optional: Absolute path to the directory to search within. Defaults to current directory.")]
+    public string? Path { get; set; }
+
+    [Display(Description = "Optional: Whether the search should be case-sensitive. Defaults to false.")]
+    public bool? CaseSensitive { get; set; }
 }
