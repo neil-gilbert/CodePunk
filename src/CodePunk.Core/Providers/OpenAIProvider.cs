@@ -149,8 +149,37 @@ public class OpenAIProvider : ILLMProvider
     public async Task<LLMResponse> SendAsync(LLMRequest request, CancellationToken cancellationToken = default)
     {
         var openAIRequest = ConvertToOpenAIRequest(request, stream: false);
-        
-        var response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
+
+        HttpResponseMessage? response = null;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
+            if (response.IsSuccessStatusCode) break;
+
+            var status = (int)response.StatusCode;
+            if (status == 429 || status == 503)
+            {
+                var retryAfter = GetRetryAfterDelay(response);
+                if (retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero)
+                {
+                    await Task.Delay(retryAfter.Value, cancellationToken);
+                    continue;
+                }
+                var delay = GetBackoffWithJitter(attempt);
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+                continue;
+            }
+
+            var errorBody = await SafeReadBodyAsync(response, cancellationToken);
+            throw CreateOpenAIApiException(response, errorBody);
+        }
+
+        if (response == null)
+            throw new InvalidOperationException("No response from OpenAI API");
+
         response.EnsureSuccessStatusCode();
 
         var openAIResponse = await response.Content.ReadFromJsonAsync<OpenAIChatResponse>(_jsonOptions, cancellationToken)
@@ -162,8 +191,37 @@ public class OpenAIProvider : ILLMProvider
     public async IAsyncEnumerable<LLMStreamChunk> StreamAsync(LLMRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var openAIRequest = ConvertToOpenAIRequest(request, stream: true);
-        
-        var response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
+
+        HttpResponseMessage? response = null;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
+            if (response.IsSuccessStatusCode) break;
+
+            var status = (int)response.StatusCode;
+            if (status == 429 || status == 503)
+            {
+                var retryAfter = GetRetryAfterDelay(response);
+                if (retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero)
+                {
+                    await Task.Delay(retryAfter.Value, cancellationToken);
+                    continue;
+                }
+                var delay = GetBackoffWithJitter(attempt);
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+                continue;
+            }
+
+            var errorBody = await SafeReadBodyAsync(response, cancellationToken);
+            throw CreateOpenAIApiException(response, errorBody);
+        }
+
+        if (response == null)
+            yield break;
+
         response.EnsureSuccessStatusCode();
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -197,6 +255,65 @@ public class OpenAIProvider : ILLMProvider
                 yield return ConvertFromOpenAIStreamChunk(choice, request);
             }
         }
+    }
+
+    private static TimeSpan? GetRetryAfterDelay(HttpResponseMessage response)
+    {
+        try
+        {
+            if (response.Headers.TryGetValues("Retry-After", out var values))
+            {
+                var v = values.FirstOrDefault();
+                if (int.TryParse(v, out var seconds)) return TimeSpan.FromSeconds(seconds);
+                if (DateTimeOffset.TryParse(v, out var at))
+                {
+                    var delta = at - DateTimeOffset.UtcNow;
+                    if (delta > TimeSpan.Zero) return delta;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static TimeSpan GetBackoffWithJitter(int attempt)
+    {
+        var steps = new[] { 0.5, 1.0, 2.0, 4.0 };
+        var idx = Math.Min(attempt, steps.Length - 1);
+        var rnd = new Random();
+        return TimeSpan.FromSeconds(steps[idx]) + TimeSpan.FromMilliseconds(rnd.Next(50, 250));
+    }
+
+    private static async Task<string> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(ct);
+        }
+        catch { return string.Empty; }
+    }
+
+    private static Exception CreateOpenAIApiException(HttpResponseMessage response, string body)
+    {
+        var code = (int)response.StatusCode;
+        if (code == 401)
+        {
+            return new InvalidOperationException("OpenAI unauthorized. Check API key.");
+        }
+        if (code == 429)
+        {
+            var retryMsg = response.Headers.TryGetValues("Retry-After", out var vs)
+                ? $" Retry-After: {vs.FirstOrDefault()}"
+                : string.Empty;
+            return new InvalidOperationException($"Rate limit exceeded.{retryMsg}");
+        }
+        if (code >= 500)
+        {
+            return new InvalidOperationException("OpenAI server error. Please retry.");
+        }
+        var snippet = string.Empty;
+        try { snippet = body?.Length > 300 ? body.Substring(0, 300) + "…" : body ?? string.Empty; } catch { }
+        return new InvalidOperationException($"OpenAI error {code}: {snippet}");
     }
 
     private object ConvertToOpenAIRequest(LLMRequest request, bool stream)
