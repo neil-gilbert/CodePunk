@@ -302,6 +302,57 @@ public class OpenAIProvider : ILLMProvider
             }).ToArray();
         }
 
+        if (request.Stop is { Length: > 0 })
+        {
+            requestObj["stop"] = request.Stop;
+        }
+
+        if (request.Seed.HasValue)
+        {
+            requestObj["seed"] = request.Seed.Value;
+        }
+
+        if (request.FrequencyPenalty.HasValue)
+        {
+            requestObj["frequency_penalty"] = request.FrequencyPenalty.Value;
+        }
+
+        if (request.PresencePenalty.HasValue)
+        {
+            requestObj["presence_penalty"] = request.PresencePenalty.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ToolChoice))
+        {
+            requestObj["tool_choice"] = request.ToolChoice;
+        }
+
+        if (request.ResponseFormat is { } rf)
+        {
+            if (string.Equals(rf.Type, "json_schema", StringComparison.OrdinalIgnoreCase) && rf.JsonSchema.HasValue)
+            {
+                var schemaObj = JsonSerializer.Deserialize<object>(rf.JsonSchema.Value.GetRawText());
+                var name = string.IsNullOrWhiteSpace(rf.SchemaName) ? "response_object" : rf.SchemaName;
+                requestObj["response_format"] = new
+                {
+                    type = "json_schema",
+                    json_schema = new
+                    {
+                        name,
+                        schema = schemaObj
+                    }
+                };
+            }
+            else if (string.Equals(rf.Type, "json_object", StringComparison.OrdinalIgnoreCase))
+            {
+                requestObj["response_format"] = new { type = "json_object" };
+            }
+            else if (string.Equals(rf.Type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                requestObj["response_format"] = new { type = "text" };
+            }
+        }
+
         return requestObj;
     }
 
