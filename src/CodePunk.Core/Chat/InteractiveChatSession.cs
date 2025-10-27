@@ -423,17 +423,73 @@ public class InteractiveChatSession
                     toolCalls.Add(new ToolCallPart(chunk.ToolCall.Id, chunk.ToolCall.Name, chunk.ToolCall.Arguments));
                 }
 
-                // Stream the content to the caller in real-time (preserve original IsComplete)
-                var compatibleChunk = new ChatStreamChunk
+                // Build a compatible stream chunk. If this is the final chunk and provider didn't supply usage,
+                // estimate usage/cost so session totals remain consistent across providers.
+                ChatStreamChunk compatibleChunk;
+                if (chunk.IsComplete && chunk.Usage == null)
                 {
-                    ContentDelta = chunk.Content,
-                    Model = model,
-                    Provider = provider,
-                    IsComplete = chunk.IsComplete,
-                    InputTokens = chunk.Usage?.InputTokens,
-                    OutputTokens = chunk.Usage?.OutputTokens,
-                    EstimatedCost = chunk.Usage?.EstimatedCost
-                };
+                    try
+                    {
+                        var prov = _llmService.GetDefaultProvider();
+                        var usage = CodePunk.Core.Utils.UsageAggregator.BuildFinalUsage(
+                            prov,
+                            model,
+                            currentMessages,
+                            responseContent.ToString(),
+                            null);
+                        compatibleChunk = new ChatStreamChunk
+                        {
+                            ContentDelta = chunk.Content,
+                            Model = model,
+                            Provider = provider,
+                            IsComplete = true,
+                            InputTokens = usage.InputTokens,
+                            OutputTokens = usage.OutputTokens,
+                            EstimatedCost = usage.EstimatedCost
+                        };
+
+                        // Update accumulated session usage
+                        AccumulatedPromptTokens += usage.InputTokens;
+                        AccumulatedCompletionTokens += usage.OutputTokens;
+                        AccumulatedCost += usage.EstimatedCost;
+
+                        // Persist to session if available
+                        if (CurrentSession != null)
+                        {
+                            CurrentSession = CurrentSession with
+                            {
+                                PromptTokens = AccumulatedPromptTokens,
+                                CompletionTokens = AccumulatedCompletionTokens,
+                                Cost = AccumulatedCost
+                            };
+                            try { await _sessionService.UpdateAsync(CurrentSession, cancellationToken).ConfigureAwait(false); }
+                            catch (Exception ex) { _logger.LogWarning(ex, "Failed to persist session usage update"); }
+                        }
+                    }
+                    catch
+                    {
+                        compatibleChunk = new ChatStreamChunk
+                        {
+                            ContentDelta = chunk.Content,
+                            Model = model,
+                            Provider = provider,
+                            IsComplete = true
+                        };
+                    }
+                }
+                else
+                {
+                    compatibleChunk = new ChatStreamChunk
+                    {
+                        ContentDelta = chunk.Content,
+                        Model = model,
+                        Provider = provider,
+                        IsComplete = chunk.IsComplete,
+                        InputTokens = chunk.Usage?.InputTokens,
+                        OutputTokens = chunk.Usage?.OutputTokens,
+                        EstimatedCost = chunk.Usage?.EstimatedCost
+                    };
+                }
 
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
