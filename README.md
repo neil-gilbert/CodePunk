@@ -1,13 +1,18 @@
-<picture>
+﻿<picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/codepunk-dark.png">
-  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=400 />
+  <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=450 />
 </picture>
+
+<!-- DIFF VIEWER TEST: This line was added to test the diff functionality -->
 
 # CodePunk
 
-**Your new coding bestie, now available in your favourite terminal.** Your tools, your code, and your workflows, wired into your LLM of choice.
+<!-- Simple edit demonstration - TESTING DIFF VIEWER - Updated for testing -->
+**Your new coding companion, now available in your favourite terminal.** Your tools, your code, and your workflows, wired into your LLM of choice.
 
-[![Latest Release](https://img.shields.io/github/v/release/neil-gilbert/CodePunk?include_prereleases&style=for-the-badge&logo=github)](https://github.com/neil-gilbert/CodePunk/releases)
+*Testing diff viewer functionality with this additional line.*
+
+[![Latest Release](https://img.shields.io/github/v/release/neil-gilbert/CodePunk?include_prereleases&style=for-the-badge&logo=github)](https://github.com/neil-gilbert/CodePunk/releases)  
 [![Build Status](https://img.shields.io/github/actions/workflow/status/neil-gilbert/CodePunk/release.yml?branch=main&style=for-the-badge&logo=githubactions)](https://github.com/neil-gilbert/CodePunk/actions)
 [![License](https://img.shields.io/github/license/neil-gilbert/CodePunk?style=for-the-badge)](https://github.com/neil-gilbert/CodePunk/blob/main/LICENSE)
 

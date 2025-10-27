@@ -1,0 +1,302 @@
+@namespace CodePunk.Tui.Components
+
+@using System
+@using System.Collections.Generic
+@using System.Text
+@using System.Threading.Tasks
+@using Microsoft.AspNetCore.Components
+@using RazorConsole.Components
+@using Spectre.Console
+@using CodePunk.Core.Chat
+@using CodePunk.Tui.Components
+@using CodePunk.Tui.Design
+@using CodePunk.Tui.ViewModels
+
+@inject CodePunk.Tui.ViewModels.ChatViewModel Vm
+@inject CodePunk.Core.Chat.InteractiveChatSession Chat
+@inject CodePunk.Tui.Services.IApprovalPromptService ApprovalService
+@implements IDisposable
+
+<Padder Padding="@(new(0, 1, 0, 0))">
+    <Align Horizontal="@HorizontalAlignment.Center">
+        <Rows>
+            <Markup Content="   ██████╗ ██████╗ ██████╗ ███████╗██████╗ ██╗   ██╗███╗   ██╗██╗  ██╗" Foreground="@ColorPalette.Brand.DarkTeal" />
+            <Markup Content="  ██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗██║   ██║████╗  ██║██║ ██╔╝" Foreground="@ColorPalette.Brand.Teal" />
+            <Markup Content="  ██║     ██║   ██║██║  ██║█████╗  ██████╔╝██║   ██║██╔██╗ ██║█████╔╝ " Foreground="@ColorPalette.Brand.Gold" />
+            <Markup Content="  ██║     ██║   ██║██║  ██║██╔══╝  ██╔═══╝ ██║   ██║██║╚██╗██║██╔═██╗ " Foreground="@ColorPalette.Brand.Gold" />
+            <Markup Content="  ╚██████╗╚██████╔╝██████╔╝███████╗██║     ╚██████╔╝██║ ╚████║██║  ██╗" Foreground="@ColorPalette.Brand.Orange" />
+            <Markup Content="   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝" Foreground="@ColorPalette.Brand.Coral" />
+        </Rows>
+    </Align>
+</Padder>
+
+<Align Horizontal="@HorizontalAlignment.Center">
+    <Markup Content="@($"{Chat.DefaultProvider ?? "No provider"} • {Chat.DefaultModel ?? "No model"}")" Foreground="@Color.Grey58" />
+</Align>
+
+<Padder Padding="@(new(1, 1, 0, 0))">
+    <Rows>
+        @if (Vm.ConversationItems.Count == 0)
+        {
+            <Markup Content="No messages yet. Type a message below to start chatting." Foreground="@Color.Grey" />
+        }
+        else
+        {
+            @foreach (var item in GetVisibleItems())
+            {
+                @RenderConversationItem(item)
+            }
+        }
+
+        @if (Vm.IsProcessing)
+        {
+            <Padder Padding="@(new(0, 0, 0, 1))">
+                <Columns>
+                    <RazorConsole.Components.Spinner SpinnerType="@Spectre.Console.Spinner.Known.Dots" />
+                    <Markup Content="AI is thinking..." Foreground="@Color.Grey" Decoration="@Decoration.Italic" />
+                </Columns>
+            </Padder>
+        }
+
+        @if (!string.IsNullOrEmpty(Vm.LiveBuffer))
+        {
+            <Padder Padding="@(new(0, 1, 0, 0))">
+                <Markup Content="@Vm.LiveBuffer" />
+            </Padder>
+        }
+    </Rows>
+</Padder>
+
+<ApprovalDialog />
+
+<TextInput @bind-Value="Vm.Input" @key="_inputKey"
+           Placeholder="Type your message here..."
+           OnSubmit="SendMessage"
+           Expand="true"
+           BorderColor="@ColorPalette.Brand.DarkTeal"
+           FocusedBorderColor="@ColorPalette.Brand.Teal" />
+<Padder Padding="@(new(1, 0, 0, 0))">
+    <TextButton Content="Send" OnClick="SendMessage" BackgroundColor="@ColorPalette.Brand.Teal" FocusedColor="@ColorPalette.Brand.Gold" />
+</Padder>
+
+<Padder Padding="@(new(0, 0, 0, 2))" />
+
+@code {
+    private int _maxHeight = 30; // Adjust based on terminal size
+    private int _maxVisibleItems = 20; // Show last N items
+    private int _inputKey = 0; // Force re-render/reset of TextInput when cleared
+    private bool _prevInputWasEmpty;
+
+    protected override void OnInitialized()
+    {
+        Vm.Changed += OnVmChanged;
+        ApprovalService.Changed += OnApprovalChanged;
+        _prevInputWasEmpty = string.IsNullOrEmpty(Vm.Input);
+    }
+
+    private void OnVmChanged()
+    {
+        var isEmpty = string.IsNullOrEmpty(Vm.Input);
+        if (!_prevInputWasEmpty && isEmpty)
+        {
+            _inputKey++; // reset the TextInput so it doesn't retain old text
+        }
+        _prevInputWasEmpty = isEmpty;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnApprovalChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Vm.EnsureSessionAsync();
+
+        // Try to set height based on terminal size
+        try
+        {
+            _maxHeight = System.Console.WindowHeight - 15; // Reserve space for header, input, etc.
+            if (_maxHeight < 10) _maxHeight = 20;
+
+            // Calculate max visible items (each item ~2-5 lines depending on type)
+            _maxVisibleItems = Math.Max(10, _maxHeight / 3);
+        }
+        catch
+        {
+            _maxHeight = 20; // fallback
+            _maxVisibleItems = 15;
+        }
+    }
+
+    // Auto-scroll: show only the most recent N items
+    private IEnumerable<ConversationItem> GetVisibleItems()
+    {
+        var allItems = Vm.ConversationItems;
+        if (allItems.Count <= _maxVisibleItems)
+        {
+            return allItems;
+        }
+
+        // Show most recent items
+        return allItems.Skip(allItems.Count - _maxVisibleItems);
+    }
+
+    private static string Escape(string? s) => Spectre.Console.Markup.Escape(s ?? string.Empty);
+
+    private RenderFragment RenderConversationItem(ConversationItem item) => item switch
+    {
+        UserMessageItem userMsg => RenderUserMessage(userMsg),
+        AssistantMessageItem assistantMsg => RenderAssistantMessage(assistantMsg),
+        ErrorMessageItem errorMsg => RenderErrorMessage(errorMsg),
+        ToolExecutionItem toolExec => RenderToolExecution(toolExec),
+        DiffItem diff => RenderDiff(diff),
+        _ => builder => { }
+    };
+
+    private RenderFragment RenderUserMessage(UserMessageItem msg) => builder =>
+    {
+        builder.OpenComponent<RazorConsole.Components.Padder>(0);
+        builder.AddAttribute(1, "Padding", new Padding(0, 1, 0, 0));
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(b2 =>
+        {
+            b2.OpenComponent<RazorConsole.Components.Markup>(0);
+            b2.AddAttribute(1, "Content", "You:");
+            b2.AddAttribute(2, "Foreground", ColorPalette.Brand.Teal);
+            b2.CloseComponent();
+
+            b2.OpenComponent<RazorConsole.Components.Markup>(3);
+            b2.AddAttribute(4, "Content", Escape(msg.Content));
+            b2.AddAttribute(5, "Foreground", Color.Grey);
+            b2.CloseComponent();
+        }));
+        builder.CloseComponent();
+    };
+
+    private RenderFragment RenderAssistantMessage(AssistantMessageItem msg) => builder =>
+    {
+        builder.OpenComponent<RazorConsole.Components.Padder>(0);
+        builder.AddAttribute(1, "Padding", new Padding(0, 1, 0, 0));
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(b2 =>
+        {
+            b2.OpenComponent<RazorConsole.Components.Markup>(0);
+            b2.AddAttribute(1, "Content", "Assistant:");
+            b2.AddAttribute(2, "Foreground", ColorPalette.Brand.Orange);
+            b2.CloseComponent();
+
+            b2.OpenComponent<RazorConsole.Components.Markup>(3);
+            b2.AddAttribute(4, "Content", Escape(msg.Content));
+            b2.AddAttribute(5, "Foreground", Color.Default);
+            b2.CloseComponent();
+        }));
+        builder.CloseComponent();
+    };
+
+    private RenderFragment RenderErrorMessage(ErrorMessageItem msg) => builder =>
+    {
+        builder.OpenComponent<RazorConsole.Components.Padder>(0);
+        builder.AddAttribute(1, "Padding", new Padding(0, 1, 0, 0));
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(b2 =>
+        {
+            b2.OpenComponent<RazorConsole.Components.Markup>(0);
+            b2.AddAttribute(1, "Content", "Error:");
+            b2.AddAttribute(2, "Foreground", ColorPalette.Brand.Coral);
+            b2.CloseComponent();
+
+            b2.OpenComponent<RazorConsole.Components.Markup>(3);
+            b2.AddAttribute(4, "Content", Escape(msg.Content));
+            b2.AddAttribute(5, "Foreground", ColorPalette.Brand.Coral);
+            b2.CloseComponent();
+        }));
+        builder.CloseComponent();
+    };
+
+    private RenderFragment RenderToolExecution(ToolExecutionItem tool) => builder =>
+    {
+        builder.OpenComponent<RazorConsole.Components.Padder>(0);
+        builder.AddAttribute(1, "Padding", new Padding(0, 1, 0, 0));
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(b2 =>
+        {
+            var icon = tool.IsError ? "❌" : "🔧";
+            b2.OpenComponent<RazorConsole.Components.Markup>(0);
+            b2.AddAttribute(1, "Content", $"{icon} Tool: {Escape(tool.ToolName)}");
+            b2.AddAttribute(2, "Foreground", tool.IsError ? ColorPalette.Brand.Coral : ColorPalette.Brand.Teal);
+            b2.CloseComponent();
+
+            if (!string.IsNullOrEmpty(tool.FilePath))
+            {
+                b2.OpenComponent<RazorConsole.Components.Markup>(3);
+                b2.AddAttribute(4, "Content", Escape(tool.FilePath));
+                b2.AddAttribute(5, "Foreground", Color.Grey);
+                b2.AddAttribute(6, "Decoration", Decoration.Dim);
+                b2.CloseComponent();
+            }
+
+            if (!string.IsNullOrEmpty(tool.Preview))
+            {
+                b2.OpenComponent<RazorConsole.Components.Markup>(7);
+                b2.AddAttribute(8, "Content", Escape(tool.Preview));
+                b2.AddAttribute(9, "Foreground", Color.Grey62);
+                b2.CloseComponent();
+            }
+
+            if (tool.IsTruncated)
+            {
+                b2.OpenComponent<RazorConsole.Components.Markup>(10);
+                b2.AddAttribute(11, "Content", $"… showing first {tool.MaxLines} lines of {tool.OriginalLineCount}");
+                b2.AddAttribute(12, "Foreground", Color.Grey);
+                b2.AddAttribute(13, "Decoration", Decoration.Dim);
+                b2.CloseComponent();
+            }
+        }));
+        builder.CloseComponent();
+    };
+
+    private RenderFragment RenderDiff(DiffItem diff) => builder =>
+    {
+        builder.OpenComponent<RazorConsole.Components.Padder>(0);
+        builder.AddAttribute(1, "Padding", new Padding(0, 1, 0, 0));
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(b2 =>
+        {
+            b2.OpenComponent<RazorConsole.Components.Markup>(0);
+            b2.AddAttribute(1, "Content", "📝 Changes:");
+            b2.AddAttribute(2, "Foreground", ColorPalette.Brand.Gold);
+            b2.CloseComponent();
+
+            b2.OpenComponent<DiffPreview>(3);
+            b2.AddAttribute(4, "Diff", diff.Diff);
+            b2.AddAttribute(5, "Path", diff.FilePath);
+            b2.CloseComponent();
+        }));
+        builder.CloseComponent();
+    };
+
+    public void Dispose()
+    {
+        Vm.Changed -= OnVmChanged;
+        ApprovalService.Changed -= OnApprovalChanged;
+    }
+
+    // Run send flow off the UI thread so the approval
+    // dialog can render while tools await user input.
+    private Task SendMessage()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Vm.SendAsync();
+            }
+            catch
+            {
+                // swallow to avoid crashing the UI loop
+            }
+            finally
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+        return Task.CompletedTask;
+    }
+}

@@ -15,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using CodePunk.Infrastructure.Settings;
+using CodePunk.Infrastructure.Providers;
 
 namespace CodePunk.Infrastructure.Configuration;
 
@@ -61,7 +63,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<InteractiveChatSession>();
 
         services.AddScoped<IDiffService, DiffService>();
-        services.AddScoped<IApprovalService, ConsoleApprovalService>();
+        // Each UI registers its own IApprovalService adapter
         services.AddScoped<IFileEditService, FileEditService>();
 
         services.Configure<PromptCacheOptions>(configuration.GetSection("PromptCache"));
@@ -95,6 +97,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, CodePunk.Core.Tools.Planning.PlanGenerateTool>();
 
         services.AddLLMProviders(configuration);
+
+        // Shared settings stores (auth/defaults) for all frontends
+        services.AddSingleton<IAuthStore, AuthFileStore>();
+        services.AddSingleton<IDefaultsStore, DefaultsFileStore>();
+
+        // Provider bootstrapper to register providers from persisted auth
+        services.AddSingleton<ProviderBootstrapper>();
 
         return services;
     }

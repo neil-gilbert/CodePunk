@@ -2,6 +2,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CodePunk.Core.Abstractions;
+using CodePunk.Core.Models;
 
 namespace CodePunk.Console.Planning;
 

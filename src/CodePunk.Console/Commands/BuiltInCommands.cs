@@ -1,5 +1,6 @@
 using CodePunk.Core.Abstractions;
 using Spectre.Console;
+using CodePunk.Infrastructure.Settings;
 using System.Linq;
 using CodePunk.Console.Themes;
 using CodePunk.Core.Chat;
@@ -390,8 +391,8 @@ public class ProvidersCommand : ChatCommand
         // Show persistence paths
         try
         {
-            console.MarkupLine(ConsoleStyles.Dim($"Auth file: {Stores.ConfigPaths.AuthFile}"));
-            console.MarkupLine(ConsoleStyles.Dim($"Defaults file: {Stores.ConfigPaths.DefaultsFile}"));
+            console.MarkupLine(ConsoleStyles.Dim($"Auth file: {ConfigPaths.AuthFile}"));
+            console.MarkupLine(ConsoleStyles.Dim($"Defaults file: {ConfigPaths.DefaultsFile}"));
         }
         catch { }
         console.WriteLine();
@@ -410,7 +411,7 @@ public class ReloadCommand : ChatCommand
     {
         try
         {
-            var bootstrap = _sp.GetService(typeof(CodePunk.Console.Providers.ProviderBootstrap)) as CodePunk.Console.Providers.ProviderBootstrap;
+            var bootstrap = _sp.GetService(typeof(CodePunk.Infrastructure.Providers.ProviderBootstrapper)) as CodePunk.Infrastructure.Providers.ProviderBootstrapper;
             if (bootstrap == null) return CommandResult.Error("Bootstrap service unavailable.");
             await bootstrap.ApplyAsync(cancellationToken);
             return CommandResult.Ok("Providers reloaded. Use /models to list models.");
@@ -500,7 +501,7 @@ public class SetupCommand : ChatCommand
         {
             try
             {
-                var bootstrap = _serviceProvider.GetService(typeof(CodePunk.Console.Providers.ProviderBootstrap)) as CodePunk.Console.Providers.ProviderBootstrap;
+                var bootstrap = _serviceProvider.GetService(typeof(CodePunk.Infrastructure.Providers.ProviderBootstrapper)) as CodePunk.Infrastructure.Providers.ProviderBootstrapper;
                 if (bootstrap != null)
                 {
                     await bootstrap.ApplyAsync(cancellationToken);
@@ -537,8 +538,8 @@ public class SetupCommand : ChatCommand
         summary.AddColumn("Item"); summary.AddColumn("Value");
         summary.AddRow("Provider", ConsoleStyles.Accent(provider));
         if (!string.IsNullOrWhiteSpace(model)) summary.AddRow("Model", ConsoleStyles.Accent(model));
-        summary.AddRow("Auth File", Stores.ConfigPaths.AuthFile);
-        summary.AddRow("Defaults File", Stores.ConfigPaths.DefaultsFile);
+        summary.AddRow("Auth File", ConfigPaths.AuthFile);
+        summary.AddRow("Defaults File", ConfigPaths.DefaultsFile);
         console.Write(summary);
         console.WriteLine();
         console.MarkupLine(ConsoleStyles.Dim("Setup complete. You can change later with /use or update keys with auth commands."));

@@ -14,6 +14,8 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using CodePunk.Core.Chat;
 using CodePunk.Console.Stores;
+using CodePunk.Infrastructure.Providers;
+using CodePunk.Infrastructure.Settings;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -55,7 +57,7 @@ await host.Services.EnsureDatabaseCreatedAsync();
 
 try
 {
-    var bootstrap = host.Services.GetService<CodePunk.Console.Providers.ProviderBootstrap>();
+    var bootstrap = host.Services.GetService<ProviderBootstrapper>();
     if (bootstrap != null)
     {
         await bootstrap.ApplyAsync();

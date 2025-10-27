@@ -2,14 +2,15 @@ using CodePunk.Console.Chat;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Rendering;
 using CodePunk.Console.Stores;
+using CodePunk.Infrastructure.Settings;
 using CodePunk.Core.Chat;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 using Microsoft.Extensions.Configuration;
 using CodePunk.Console.Planning;
-using CodePunk.Console.Providers;
 using Microsoft.Extensions.Logging;
 using CodePunk.Core.SyntaxHighlighting.Abstractions;
+using CodePunk.Core.Abstractions;
 
 namespace CodePunk.Console.Configuration;
 
@@ -18,12 +19,10 @@ public static class ConsoleServiceCollectionExtensions
     public static IServiceCollection AddCodePunkConsole(this IServiceCollection services, IConfiguration? configuration = null)
     {
         services.AddSingleton<IAnsiConsole>(AnsiConsole.Console);
-        services.AddSingleton<IAuthStore, AuthFileStore>();
+        // Auth/defaults stores now provided by Infrastructure
         services.AddSingleton<IAgentStore, AgentFileStore>();
         services.AddSingleton<ISessionFileStore, SessionFileStore>();
         services.AddSingleton<IPlanFileStore, PlanFileStore>();
-        services.AddSingleton<IDefaultsStore, DefaultsFileStore>();
-        services.AddSingleton<ProviderBootstrap>(sp => new ProviderBootstrap(services, configuration!, sp.GetRequiredService<IAuthStore>(), sp.GetRequiredService<ILogger<ProviderBootstrap>>()));
         if (configuration != null)
         {
             services.Configure<PlanAiGenerationOptions>(configuration.GetSection("PlanAI"));
@@ -60,6 +59,7 @@ public static class ConsoleServiceCollectionExtensions
         services.AddTransient<ChatCommand, SetupCommand>();
         services.AddTransient<ChatCommand, ReloadCommand>();
         services.AddTransient<ChatCommand, ProvidersCommand>();
+        services.AddScoped<IApprovalService, CodePunk.Console.Adapters.SpectreApprovalService>();
         services.AddSingleton<CommandProcessor>();
         
         return services;

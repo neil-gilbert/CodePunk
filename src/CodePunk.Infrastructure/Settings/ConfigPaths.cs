@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices;
 
-namespace CodePunk.Console.Stores;
+namespace CodePunk.Infrastructure.Settings;
 
 /// <summary>
 /// Resolves base configuration paths for CodePunk CLI related persistence (auth, agents, sessions).
 /// </summary>
-internal static class ConfigPaths
+public static class ConfigPaths
 {
     // Compute each access so tests can override via environment variable before use.
     public static string BaseConfigDirectory => ResolveBaseConfigDir();

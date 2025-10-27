@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data", "src\CodePu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Infrastructure", "src\CodePunk.Infrastructure\CodePunk.Infrastructure.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Tui", "src\CodePunk.Tui\CodePunk.Tui.csproj", "{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Core.Tests", "tests\CodePunk.Core.Tests\CodePunk.Core.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodePunk.Data.Tests", "tests\CodePunk.Data.Tests\CodePunk.Data.Tests.csproj", "{00000000-0000-0000-0000-000000000000}"
@@ -34,6 +36,10 @@ Global
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -41,6 +47,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{1B61A2F1-1C3D-4E5F-8F4E-5C7B9D0E2A3F} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
 		{00000000-0000-0000-0000-000000000000} = {9A19103F-16F7-4668-BE54-9A1E7A4F7556}
+		{2A5C3F33-2FA4-4D36-A0EB-186D0AD8F9D8} = {8BB2AD09-0989-4B3C-9C6E-643F07C5C71E}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8CC3F7A5-B9D8-4F2E-A1C6-3E7F9B2D5A4C}

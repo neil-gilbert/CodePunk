@@ -2,6 +2,7 @@ using System.CommandLine;
 using CodePunk.Console.Commands;
 using CodePunk.Console.Stores;
 using CodePunk.Console.Tests.Testing;
+using CodePunk.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -17,7 +18,7 @@ public class AuthCommandTests
         Directory.CreateDirectory(tmp);
         try
         {
-            var hostCtx = ConsoleTestHostFactory.Create();
+            var hostCtx = ConsoleTestHostFactory.Create(useRealAuthStore: true);
             var root = RootCommandFactory.Create(hostCtx.Host.Services);
             await root.InvokeAsync(new[]{"auth","login","--provider","Test","--key","abc123"});
             await root.InvokeAsync(new[]{"auth","login","--provider","Other","--key","xyz789"});

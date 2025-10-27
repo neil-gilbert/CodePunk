@@ -6,3 +6,4 @@ namespace CodePunk.Core.Models
         public bool IncludeToolMessages { get; set; } = false;
     }
 }
+

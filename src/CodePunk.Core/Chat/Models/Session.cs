@@ -2,9 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace CodePunk.Core.Models;
 
-/// <summary>
-/// Represents a chat session with the AI assistant
-/// </summary>
 public record Session
 {
     public required string Id { get; init; }
@@ -21,9 +18,6 @@ public record Session
     public DateTimeOffset UpdatedAt { get; init; }
     public string? SummaryMessageId { get; init; }
 
-    /// <summary>
-    /// Creates a new session with generated ID and timestamps
-    /// </summary>
     public static Session Create(string title, string? parentSessionId = null)
     {
         var now = DateTimeOffset.UtcNow;
@@ -41,3 +35,4 @@ public record Session
         };
     }
 }
+

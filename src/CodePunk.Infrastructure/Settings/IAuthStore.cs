@@ -1,4 +1,4 @@
-namespace CodePunk.Console.Stores;
+namespace CodePunk.Infrastructure.Settings;
 
 /// <summary>
 /// Manages persistent API credentials per provider for the CLI.

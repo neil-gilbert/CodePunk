@@ -6,6 +6,7 @@ using CodePunk.Console.Stores;
 using CodePunk.Core.Abstractions;
 using CodePunk.Core.Models;
 using CodePunk.Core.Services;
+using CodePunk.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
