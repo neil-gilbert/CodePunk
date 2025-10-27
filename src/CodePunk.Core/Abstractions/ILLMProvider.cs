@@ -75,6 +75,11 @@ public record LLMRequest
     public double Temperature { get; init; } = 0.7;
     public double TopP { get; init; } = 1.0;
     public bool UseEphemeralCache { get; init; }
+    /// <summary>
+    /// Optional structured-output configuration, enabling providers to return strict JSON or JSON matching a schema.
+    /// When supported, providers will use native response formatting (e.g., OpenAI response_format) or prompt guidance.
+    /// </summary>
+    public LLMResponseFormat? ResponseFormat { get; init; }
 }
 
 /// <summary>
@@ -104,6 +109,28 @@ public record LLMStreamChunk
     public ServerToolUseEvent? ServerToolUse { get; init; }
     public McpToolUseEvent? McpToolUse { get; init; }
     public WebSearchToolResultEvent? WebSearchToolResult { get; init; }
+}
+
+/// <summary>
+/// Response formatting preferences. For OpenAI, maps to response_format.
+/// If Type == "json_schema", a JsonSchema should be provided; SchemaName may be required by some providers.
+/// </summary>
+public sealed record LLMResponseFormat
+{
+    /// <summary>
+    /// "text" | "json_object" | "json_schema"
+    /// </summary>
+    public required string Type { get; init; }
+
+    /// <summary>
+    /// Optional schema name for providers that require a name for the schema (e.g., OpenAI json_schema.name).
+    /// </summary>
+    public string? SchemaName { get; init; }
+
+    /// <summary>
+    /// Raw JSON schema when Type == "json_schema".
+    /// </summary>
+    public JsonElement? JsonSchema { get; init; }
 }
 
 public record ServerToolUseEvent(string Id, string Name, string? Query);

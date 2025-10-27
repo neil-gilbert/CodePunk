@@ -629,23 +629,70 @@ public class AnthropicProvider : ILLMProvider
 
     private List<AnthropicSystemContent>? BuildSystemContent(LLMRequest request, string? systemPrompt)
     {
-        if (string.IsNullOrWhiteSpace(systemPrompt))
+        if (string.IsNullOrWhiteSpace(systemPrompt) && request.ResponseFormat == null)
         {
             return null;
         }
 
-        var entry = new AnthropicSystemContent
-        {
-            Type = "text",
-            Text = systemPrompt
-        };
+        var list = new List<AnthropicSystemContent>();
 
-        if (request.UseEphemeralCache)
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
-            entry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral", Ttl = _ephemeralTtl };
+            var entry = new AnthropicSystemContent
+            {
+                Type = "text",
+                Text = systemPrompt
+            };
+            if (request.UseEphemeralCache)
+            {
+                entry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral", Ttl = _ephemeralTtl };
+            }
+            list.Add(entry);
         }
 
-        return new List<AnthropicSystemContent> { entry };
+        // Structured-output guidance: ask for strict JSON only; include schema when available
+        if (request.ResponseFormat is { } rf)
+        {
+            var guidance = rf.Type.ToLowerInvariant() switch
+            {
+                "json_schema" => BuildJsonSchemaGuidance(rf),
+                "json_object" => "Respond with a single valid JSON object only. No explanations, no markdown, no prose.",
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(guidance))
+            {
+                var guidanceEntry = new AnthropicSystemContent
+                {
+                    Type = "text",
+                    Text = guidance
+                };
+                if (request.UseEphemeralCache)
+                {
+                    guidanceEntry.CacheControl = new AnthropicCacheControlRequest { Type = "ephemeral", Ttl = _ephemeralTtl };
+                }
+                list.Add(guidanceEntry);
+            }
+        }
+
+        return list.Count > 0 ? list : null;
+    }
+
+    private static string BuildJsonSchemaGuidance(LLMResponseFormat rf)
+    {
+        try
+        {
+            var schemaText = rf.JsonSchema.HasValue ? rf.JsonSchema.Value.GetRawText() : "{}";
+            var name = string.IsNullOrWhiteSpace(rf.SchemaName) ? "Response" : rf.SchemaName;
+            return "You must output only a single valid JSON object that strictly conforms to the following JSON Schema. " +
+                   "Do not include any explanations, markdown, or additional text.\n" +
+                   $"Schema name: {name}\n" +
+                   schemaText;
+        }
+        catch
+        {
+            return "You must output only a single valid JSON object. Do not include explanations, markdown, or additional text.";
+        }
     }
 
     private (List<AnthropicMessage>, string?) ConvertMessages(IReadOnlyList<Message> messages, string? systemPrompt)

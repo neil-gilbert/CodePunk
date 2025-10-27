@@ -406,6 +406,33 @@ public class OpenAIProvider : ILLMProvider
             }).ToArray();
         }
 
+        // Structured output support via OpenAI response_format
+        if (request.ResponseFormat is { } rf)
+        {
+            if (string.Equals(rf.Type, "json_schema", StringComparison.OrdinalIgnoreCase) && rf.JsonSchema.HasValue)
+            {
+                var schemaObj = JsonSerializer.Deserialize<object>(rf.JsonSchema.Value.GetRawText());
+                var name = string.IsNullOrWhiteSpace(rf.SchemaName) ? "response_object" : rf.SchemaName;
+                requestObj["response_format"] = new
+                {
+                    type = "json_schema",
+                    json_schema = new
+                    {
+                        name,
+                        schema = schemaObj
+                    }
+                };
+            }
+            else if (string.Equals(rf.Type, "json_object", StringComparison.OrdinalIgnoreCase))
+            {
+                requestObj["response_format"] = new { type = "json_object" };
+            }
+            else if (string.Equals(rf.Type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                requestObj["response_format"] = new { type = "text" };
+            }
+        }
+
         return requestObj;
     }
 
