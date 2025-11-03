@@ -134,7 +134,6 @@ public class LLMService : ILLMService
     {
         var systemPrompt = _promptProvider.GetSystemPrompt(providerName, PromptType.Coder);
 
-        // Append working directory so AI knows the context
         var workingDir = Directory.GetCurrentDirectory();
         systemPrompt += $"\n\nWorking directory: {workingDir}\n";
 
@@ -163,7 +162,6 @@ public class LLMService : ILLMService
             MaxTokens = 4096,
             Temperature = 0.7,
             SystemPrompt = systemPrompt,
-            // Encourage a tool call on first meaningful turn when we've restricted the tool set
             ToolChoice = !hasAssistantOrTool ? "required" : null
         };
         return request;
@@ -194,8 +192,6 @@ public class LLMService : ILLMService
             yield return chunk;
         }
     }
-
-    
 
     private async Task<(LLMRequest RequestToSend, PromptCacheContext? Context)> PrepareRequestAsync(
         ILLMProvider provider,
