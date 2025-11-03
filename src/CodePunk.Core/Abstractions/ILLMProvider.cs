@@ -75,9 +75,20 @@ public record LLMRequest
     public double Temperature { get; init; } = 0.7;
     public double TopP { get; init; } = 1.0;
     public bool UseEphemeralCache { get; init; }
+
     /// <summary>
     /// Optional structured-output configuration, enabling providers to return strict JSON or JSON matching a schema.
     /// When supported, providers will use native response formatting (e.g., OpenAI response_format) or prompt guidance.
+    public string[]? Stop { get; init; }
+    public int? Seed { get; init; }
+    public double? FrequencyPenalty { get; init; }
+    public double? PresencePenalty { get; init; }
+    /// <summary>
+    /// Provider hint for tool invocation behavior: "auto" | "required" | "none"
+    /// </summary>
+    public string? ToolChoice { get; init; }
+    /// <summary>
+    /// Optional structured-output configuration (e.g., JSON/JSON schema)
     /// </summary>
     public LLMResponseFormat? ResponseFormat { get; init; }
 }

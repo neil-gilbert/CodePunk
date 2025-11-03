@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CodePunk.Core.Abstractions;
@@ -192,44 +194,25 @@ public class OpenAIProvider : ILLMProvider
     {
         var openAIRequest = ConvertToOpenAIRequest(request, stream: true);
 
-        HttpResponseMessage? response = null;
-        for (var attempt = 0; attempt < 4; attempt++)
-        {
-            response = await _httpClient.PostAsJsonAsync("chat/completions", openAIRequest, _jsonOptions, cancellationToken);
-            if (response.IsSuccessStatusCode) break;
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+        var payload = JsonSerializer.Serialize(openAIRequest, _jsonOptions);
+        httpRequest.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+        httpRequest.Headers.Accept.Clear();
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-            var status = (int)response.StatusCode;
-            if (status == 429 || status == 503)
-            {
-                var retryAfter = GetRetryAfterDelay(response);
-                if (retryAfter.HasValue && retryAfter.Value > TimeSpan.Zero)
-                {
-                    await Task.Delay(retryAfter.Value, cancellationToken);
-                    continue;
-                }
-                var delay = GetBackoffWithJitter(attempt);
-                if (delay > TimeSpan.Zero)
-                {
-                    await Task.Delay(delay, cancellationToken);
-                }
-                continue;
-            }
-
-            var errorBody = await SafeReadBodyAsync(response, cancellationToken);
-            throw CreateOpenAIApiException(response, errorBody);
-        }
-
-        if (response == null)
-            yield break;
-
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var line = await reader.ReadLineAsync();
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null) break; // end of stream
             if (string.IsNullOrEmpty(line) || !line.StartsWith("data: "))
                 continue;
 
@@ -406,7 +389,31 @@ public class OpenAIProvider : ILLMProvider
             }).ToArray();
         }
 
-        // Structured output support via OpenAI response_format
+        if (request.Stop is { Length: > 0 })
+        {
+            requestObj["stop"] = request.Stop;
+        }
+
+        if (request.Seed.HasValue)
+        {
+            requestObj["seed"] = request.Seed.Value;
+        }
+
+        if (request.FrequencyPenalty.HasValue)
+        {
+            requestObj["frequency_penalty"] = request.FrequencyPenalty.Value;
+        }
+
+        if (request.PresencePenalty.HasValue)
+        {
+            requestObj["presence_penalty"] = request.PresencePenalty.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ToolChoice))
+        {
+            requestObj["tool_choice"] = request.ToolChoice;
+        }
+
         if (request.ResponseFormat is { } rf)
         {
             if (string.Equals(rf.Type, "json_schema", StringComparison.OrdinalIgnoreCase) && rf.JsonSchema.HasValue)
