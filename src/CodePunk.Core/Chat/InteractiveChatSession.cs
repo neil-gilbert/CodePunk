@@ -206,6 +206,8 @@ public class InteractiveChatSession
         return false;
     }
 
+    
+
     /// <summary>
     /// Injects an ephemeral system nudge when nearing the tool-iteration cap to guide the model
     /// towards consolidation, batching, or finalizing an answer instead of continuing to loop.

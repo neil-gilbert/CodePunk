@@ -11,4 +11,11 @@ public class AnthropicConfiguration
     public double Temperature { get; set; } = 0.7;
     public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(2);
     public string Version { get; set; } = "2023-06-01";
+    public Dictionary<string, AnthropicModelCost> Costs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public record AnthropicModelCost
+{
+    public decimal Input { get; init; }
+    public decimal Output { get; init; }
 }

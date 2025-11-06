@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Repo-local launcher to ensure the CLI runs with the in-repo Console app
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec dotnet run --project "$ROOT_DIR/src/CodePunk.Console" -- "$@"
+

@@ -566,6 +566,8 @@ public class AnthropicProvider : ILLMProvider
         catch { }
     }
 
+    
+
     private Exception CreateApiException(HttpResponseMessage response, string body)
     {
         var code = (int)response.StatusCode;
@@ -779,6 +781,8 @@ public class AnthropicProvider : ILLMProvider
         return (anthropicMessages, extractedSystemPrompt);
     }
 
+    
+
     private string GetMessageContent(Message message)
     {
         var textParts = message.Parts.OfType<TextPart>();
@@ -883,6 +887,7 @@ public class AnthropicProvider : ILLMProvider
             AnthropicModels.ClaudeOpus41 => "Claude Opus 4.1",
             AnthropicModels.ClaudeOpus4 => "Claude Opus 4",
             AnthropicModels.ClaudeSonnet4 => "Claude Sonnet 4",
+            AnthropicModels.ClaudeSonnet45 => "Claude Sonnet 4.5",
             AnthropicModels.Claude37Sonnet => "Claude Sonnet 3.7",
             AnthropicModels.Claude35Haiku => "Claude Haiku 3.5",
             _ => modelId
@@ -891,11 +896,13 @@ public class AnthropicProvider : ILLMProvider
 
     private decimal GetModelInputCost(string modelId)
     {
+        if (_config.Costs != null && _config.Costs.TryGetValue(modelId, out var cost) && cost.Input > 0) return cost.Input;
         return modelId switch
         {
             AnthropicModels.ClaudeOpus41 => 15.00m,
             AnthropicModels.ClaudeOpus4 => 15.00m,
             AnthropicModels.ClaudeSonnet4 => 3.00m,
+            AnthropicModels.ClaudeSonnet45 => 3.00m,
             AnthropicModels.Claude37Sonnet => 3.00m,
             AnthropicModels.Claude35Haiku => 0.80m,
             _ => 0m
@@ -904,11 +911,13 @@ public class AnthropicProvider : ILLMProvider
 
     private decimal GetModelOutputCost(string modelId)
     {
+        if (_config.Costs != null && _config.Costs.TryGetValue(modelId, out var cost) && cost.Output > 0) return cost.Output;
         return modelId switch
         {
             AnthropicModels.ClaudeOpus41 => 18.75m,
             AnthropicModels.ClaudeOpus4 => 18.75m,
             AnthropicModels.ClaudeSonnet4 => 3.75m,
+            AnthropicModels.ClaudeSonnet45 => 3.75m,
             AnthropicModels.Claude37Sonnet => 3.75m,
             AnthropicModels.Claude35Haiku => 1.00m,
             _ => 0m

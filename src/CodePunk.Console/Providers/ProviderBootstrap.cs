@@ -63,6 +63,20 @@ public class ProviderBootstrap
                 Temperature = 0.7,
                 Version = version
             };
+            var costSection = _configuration.GetSection("AI:Providers:Anthropic:Costs");
+            if (costSection.Exists())
+            {
+                foreach (var child in costSection.GetChildren())
+                {
+                    var model = child.Key;
+                    var input = child.GetValue<decimal>("Input");
+                    var output = child.GetValue<decimal>("Output");
+                    if (input > 0 || output > 0)
+                    {
+                        config.Costs[model] = new AnthropicModelCost { Input = input, Output = output };
+                    }
+                }
+            }
             var providerLoggerFactory = LoggerFactory.Create(b =>
             {
                 var envLevel = Environment.GetEnvironmentVariable("CODEPUNK_PROVIDER_LOGLEVEL");

@@ -161,6 +161,7 @@ public class LLMService : ILLMService
                                            || string.Equals(t.Name, "mode_bug", StringComparison.OrdinalIgnoreCase))
                                   .ToList();
         }
+        
 
         var request = new LLMRequest
         {
@@ -168,7 +169,7 @@ public class LLMService : ILLMService
             Messages = msgs.AsReadOnly(),
             Tools = toolsToSend,
             MaxTokens = 4096,
-            Temperature = 0.7,
+            Temperature = 0.2,
             SystemPrompt = systemPrompt,
             ToolChoice = !hasAssistantOrTool ? "required" : null
         };
@@ -227,6 +228,8 @@ public class LLMService : ILLMService
         return (int)Math.Ceiling(chars / 4.0);
     }
 
+    
+
     private static Message ConvertResponseToMessage(LLMResponse response, string sessionId, string providerName)
     {
         var parts = new List<MessagePart> { new TextPart(response.Content) };
@@ -236,7 +239,6 @@ public class LLMService : ILLMService
     private async Task<LLMResponse> SendWithCacheAsync(ILLMProvider provider, LLMRequest request, CancellationToken cancellationToken)
     {
         var preparation = await PrepareRequestAsync(provider, request, cancellationToken).ConfigureAwait(false);
-
         var response = await provider.SendAsync(preparation.RequestToSend, cancellationToken).ConfigureAwait(false);
         return response;
     }

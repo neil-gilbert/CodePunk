@@ -1,10 +1,11 @@
-<picture>
+﻿<picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/codepunk-dark.png">
   <img alt="CodePunk 8-bit pixel art logo" src="images/codepunk-light.png" width=400 />
 </picture>
 
 # CodePunk
 
+> **Note**: This is a test edit to verify prompt caching functionality.
 **Your new coding bestie, now available in your favourite terminal.** Your tools, your code, and your workflows, wired into your LLM of choice.
 
 [![Latest Release](https://img.shields.io/github/v/release/neil-gilbert/CodePunk?include_prereleases&style=for-the-badge&logo=github)](https://github.com/neil-gilbert/CodePunk/releases)

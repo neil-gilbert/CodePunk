@@ -72,7 +72,7 @@ public record LLMRequest
     public IReadOnlyList<LLMTool>? Tools { get; init; }
     public string? SystemPrompt { get; init; }
     public int MaxTokens { get; init; } = 1000;
-    public double Temperature { get; init; } = 0.7;
+    public double Temperature { get; init; } = 0.2;
     public double TopP { get; init; } = 1.0;
     public bool UseEphemeralCache { get; init; }
 

@@ -145,6 +145,20 @@ public static class ServiceCollectionExtensions
                 Temperature = configuration.GetValue("AI:Providers:Anthropic:Temperature", 0.7),
                 Version = configuration["AI:Providers:Anthropic:Version"] ?? "2023-06-01"
             };
+            var costSection = configuration.GetSection("AI:Providers:Anthropic:Costs");
+            if (costSection.Exists())
+            {
+                foreach (var child in costSection.GetChildren())
+                {
+                    var model = child.Key;
+                    var input = child.GetValue<decimal>("Input");
+                    var output = child.GetValue<decimal>("Output");
+                    if (input > 0 || output > 0)
+                    {
+                        anthropicConfig.Costs[model] = new AnthropicModelCost { Input = input, Output = output };
+                    }
+                }
+            }
 
             services.AddSingleton(anthropicConfig);
             services.AddHttpClient<AnthropicProvider>()
