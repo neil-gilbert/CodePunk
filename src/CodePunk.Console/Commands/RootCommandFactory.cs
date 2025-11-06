@@ -35,7 +35,8 @@ internal static class RootCommandFactory
             new AgentCommandModule(),
             new ModelsCommandModule(),
             new SessionsCommandModule(),
-            new PlanCommandModule()
+            new PlanCommandModule(),
+            new RoslynCommandModule()
         };
         foreach (var m in modules) m.Register(root, services);
         // Custom help: intercept invocation when --help is present at root without subcommand

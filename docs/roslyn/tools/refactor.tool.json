@@ -1,0 +1,44 @@
+{
+  "name": "roslyn_refactor",
+  "description": "Roslyn-backed refactors and transforms: rename, apply-fix (format, simplify-names, remove-unused-usings, sort-usings). Returns edits and diffs.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "enum": ["rename", "apply-fix"],
+        "description": "Refactor operation to perform."
+      },
+      "fullyQualifiedName": { "type": ["string", "null"], "description": "Optional FQN (e.g., Namespace.Type.Method). For rename." },
+      "file": { "type": ["string", "null"], "description": "Optional source file for location-based symbol or for file-scoped fix." },
+      "line": { "type": ["integer", "null"], "minimum": 1, "description": "1-based line for location-based symbol." },
+      "column": { "type": ["integer", "null"], "minimum": 1, "description": "1-based column for location-based symbol." },
+      "newName": { "type": ["string", "null"], "description": "New name for rename operation." },
+      "diagnosticId": {
+        "type": ["string", "null"],
+        "description": "Fix ID/alias for apply-fix.",
+        "enum": [
+          "format", "format-document",
+          "simplify-names", "IDE0001",
+          "remove-unused-usings", "CS8019", "IDE0005",
+          "sort-usings", "organize-usings"
+        ]
+      }
+    },
+    "allOf": [
+      { "if": { "properties": { "operation": { "const": "rename" } } },
+        "then": { "required": ["operation", "newName"], "description": "Provide newName and either fullyQualifiedName or file+line+column." } },
+      { "if": { "properties": { "operation": { "const": "apply-fix" } } },
+        "then": { "required": ["operation", "diagnosticId"], "description": "Provide diagnosticId; optionally file to restrict scope." } }
+    ]
+  },
+  "returns": {
+    "schema": "codepunk.roslyn.edits.v1",
+    "example": {
+      "schema": "codepunk.roslyn.edits.v1",
+      "operation": "apply-fix",
+      "files": [ { "path": "src/Foo.cs", "diff": "@@ -1,5 +1,4 @@\n-using X;\n using System;\n" } ]
+    }
+  }
+}
+

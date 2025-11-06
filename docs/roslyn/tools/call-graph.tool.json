@@ -1,0 +1,31 @@
+{
+  "name": "roslyn_call_graph",
+  "description": "Build inbound/outbound call graph for a method, with edges and depth/width guardrails.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "fullyQualifiedName": { "type": ["string", "null"], "description": "Optional FQN (e.g., Namespace.Type.Method)." },
+      "file": { "type": ["string", "null"], "description": "Optional source file for location-based lookup." },
+      "line": { "type": ["integer", "null"], "minimum": 1, "description": "1-based line." },
+      "column": { "type": ["integer", "null"], "minimum": 1, "description": "1-based column." },
+      "maxNodes": { "type": ["integer", "null"], "minimum": 1, "maximum": 2000, "default": 200, "description": "Node cap." },
+      "depth": { "type": ["integer", "null"], "minimum": 1, "maximum": 5, "default": 1, "description": "Traversal depth (1=direct only)." }
+    },
+    "anyOf": [
+      { "required": ["fullyQualifiedName"] },
+      { "required": ["file", "line", "column"] }
+    ]
+  },
+  "returns": {
+    "schema": "codepunk.roslyn.callgraph.v1",
+    "example": {
+      "schema": "codepunk.roslyn.callgraph.v1",
+      "root": { "id": "Foo.Do()", "name": "Do", "kind": "Method" },
+      "outbound": [ { "id": "Bar.Baz()" } ],
+      "inbound": [ { "id": "Program.Main(string[])" } ],
+      "edges": [ { "from": "Program.Main(string[])", "to": "Foo.Do()" }, { "from": "Foo.Do()", "to": "Bar.Baz()" } ],
+      "truncated": false
+    }
+  }
+}
+

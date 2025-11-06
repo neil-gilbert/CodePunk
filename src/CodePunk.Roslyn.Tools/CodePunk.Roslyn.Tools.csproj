@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CodePunk.Core\CodePunk.Core.csproj" />
+    <ProjectReference Include="..\CodePunk.Roslyn.Core\CodePunk.Roslyn.Core.csproj" />
+  </ItemGroup>
+</Project>
+

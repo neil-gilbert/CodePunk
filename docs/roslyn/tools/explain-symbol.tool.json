@@ -1,0 +1,35 @@
+{
+  "name": "roslyn_explain_symbol",
+  "description": "Explain a C# symbol (by FQN or source location), including signature, container, references, and doc comments.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "solutionPath": { "type": ["string", "null"], "description": "Optional path to .sln or .csproj. Defaults to auto-discovery from CWD." },
+      "fullyQualifiedName": { "type": ["string", "null"], "description": "Optional fully-qualified symbol name (e.g., Acme.Core.MyType.DoWork)." },
+      "file": { "type": ["string", "null"], "description": "Optional source file path for location-based lookup." },
+      "line": { "type": ["integer", "null"], "minimum": 1, "description": "1-based line number for location-based lookup." },
+      "column": { "type": ["integer", "null"], "minimum": 1, "description": "1-based column number for location-based lookup." },
+      "maxReferences": { "type": ["integer", "null"], "minimum": 1, "maximum": 1000, "default": 100, "description": "Limit number of references returned." }
+    },
+    "anyOf": [
+      { "required": ["fullyQualifiedName"] },
+      { "required": ["file", "line", "column"] }
+    ]
+  },
+  "returns": {
+    "schema": "codepunk.roslyn.symbol.v1",
+    "example": {
+      "schema": "codepunk.roslyn.symbol.v1",
+      "symbol": {
+        "name": "MyType.DoWork",
+        "kind": "Method",
+        "signature": "void DoWork(int x)",
+        "containingNamespace": "Acme.Core",
+        "locations": ["src/Core/MyType.cs:42:13"],
+        "references": ["src/App/Program.cs:15:21"],
+        "summaryXml": "<summary>Does work</summary>"
+      }
+    }
+  }
+}
+
