@@ -53,6 +53,7 @@
   <ItemGroup>
     <ProjectReference Include="../CodePunk.Core/CodePunk.Core.csproj" />
     <ProjectReference Include="../CodePunk.Infrastructure/CodePunk.Infrastructure.csproj" />
+    <ProjectReference Include="../CodePunk.Roslyn.Core/CodePunk.Roslyn.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

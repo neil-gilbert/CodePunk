@@ -15,6 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="../CodePunk.Core/CodePunk.Core.csproj" />
     <ProjectReference Include="../CodePunk.Data/CodePunk.Data.csproj" />
+    <ProjectReference Include="../CodePunk.Roslyn.Core/CodePunk.Roslyn.Core.csproj" />
+    <ProjectReference Include="../CodePunk.Roslyn.Tools/CodePunk.Roslyn.Tools.csproj" />
   </ItemGroup>
 
 </Project>

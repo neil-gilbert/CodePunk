@@ -15,6 +15,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using CodePunk.Roslyn.Abstractions;
+using CodePunk.Roslyn.Services;
+using CodePunk.Roslyn.Tools;
 
 namespace CodePunk.Infrastructure.Configuration;
 
@@ -93,6 +96,24 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITool, CodePunk.Core.Tools.Modes.PlanModeTool>();
         services.AddScoped<ITool, CodePunk.Core.Tools.Modes.BugModeTool>();
         services.AddScoped<ITool, CodePunk.Core.Tools.Planning.PlanGenerateTool>();
+
+        // Roslyn services
+        services.AddSingleton<IRoslynWorkspaceService, RoslynWorkspaceService>();
+        services.AddScoped<IRoslynAnalyzerService, RoslynAnalyzerService>();
+        services.AddScoped<IRoslynRefactorService, RoslynRefactorService>();
+
+        // Gate Roslyn tool exposure to LLM by solution/project presence
+        var cwd = Directory.GetCurrentDirectory();
+        var hasSln = Directory.EnumerateFiles(cwd, "*.sln", SearchOption.TopDirectoryOnly).Any();
+        var hasProj = Directory.EnumerateFiles(cwd, "*.csproj", SearchOption.TopDirectoryOnly).Any();
+        if (hasSln || hasProj)
+        {
+            services.AddScoped<ITool, RoslynAnalyzeTool>();
+            services.AddScoped<ITool, RoslynExplainSymbolTool>();
+            services.AddScoped<ITool, RoslynRefactorTool>();
+            services.AddScoped<ITool, RoslynCallGraphTool>();
+            services.AddScoped<ITool, RoslynValidateBuildTool>();
+        }
 
         services.AddLLMProviders(configuration);
 
