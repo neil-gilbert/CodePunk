@@ -5,12 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis" Version="4.*" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.*" />
+    <PackageReference Include="Microsoft.CodeAnalysis" Version="5.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.*" />
     <PackageReference Include="Microsoft.Build.Locator" Version="1.*" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Features" Version="4.*" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.*" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Features" Version="5.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CodePunk.Core\CodePunk.Core.csproj" />
